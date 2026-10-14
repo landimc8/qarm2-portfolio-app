@@ -23,4 +23,4 @@ with tab3:
     st.write("Optimal hedge weights and risk metrics will be shown here.")
 
 st.divider()
-st.caption("Team: [add names here]")
+st.caption("Team: Betty Mikeal, Danela Vlacic, Imen Hassine, Zildete Landim Crausaz")
