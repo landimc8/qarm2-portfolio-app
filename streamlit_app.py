@@ -418,18 +418,28 @@ with st.expander("Show raw weights and risk contributions"):
 # --- global minimum variance (LN1 closed form, no client rules) -------------
 
 with st.expander("Compare: global minimum variance (no rules) vs our recommended mix"):
+    # 1) Professor's closed form (LN1): budget only, short selling allowed
     ones = np.ones(len(PORTFOLIO_TICKERS))
     inv_cov = np.linalg.inv(cov_matrix)
     w_gmv = inv_cov @ ones / (ones @ inv_cov @ ones)          # Sigma^-1 1 / 1' Sigma^-1 1
     vol_gmv = np.sqrt(w_gmv @ cov_matrix @ w_gmv)
+
+    # 2) Our optimizer: lowest-risk point of the grey line (budget + long-only)
+    grey_mv = min_variance_portfolio(unconstrained_frontier)
+    w_grey = grey_mv["weights"]
+    vol_grey = grey_mv["volatility"]
+
     st.markdown(
         "Global minimum variance from LN1: "
         "$x_{gmv} = \\Sigma^{-1}\\mathbf{1} / \\mathbf{1}^\\top\\Sigma^{-1}\\mathbf{1}$ "
         "(only the budget rule, short selling allowed)."
     )
     st.dataframe(pd.DataFrame({
-        "Global MV (no rules)": [f"{w:.1%}" for w in w_gmv],
-        "Our recommended mix": [f"{w:.1%}" for w in weights],
-    }, index=PORTFOLIO_TICKERS))
-    st.write(f"Daily risk: global MV **{vol_gmv:.2%}** vs our mix **{recommended['volatility']:.2%}**. "
-             "The difference is the cost of the client's rules.")
+        "Analytical solution (budget only)": [f"{w:.1%}" for w in w_gmv] + [f"{vol_gmv:.2%}"],
+        "Grey line minimum (budget + long-only)": [f"{w:.1%}" for w in w_grey] + [f"{vol_grey:.2%}"],
+        "Our recommended mix (+ RED2 + cap)": [f"{w:.1%}" for w in weights] + [f"{recommended['volatility']:.2%}"],
+    }, index=PORTFOLIO_TICKERS + ["Daily risk"]))
+    st.caption(
+        "The analytical solution has no negative weights on our data, so it matches the grey line's safest point (small differences come from the 50-point grid). Our mix is riskier because the "
+        "35% cap limits live cattle: that is the cost of the client's rules."
+    )
