@@ -544,3 +544,93 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "stable costs are the right goal for a buyer. Cost-at-Risk is a standard parametric "
         "VaR (not from the course)."
     )
+
+
+# --- stable margin: minimize tracking error vs the selling price (LN2) -------
+
+with st.expander("Stable costs or stable margin? (tracking error vs diesel, LN2)"):
+    from scipy.optimize import minimize as _minimize
+    from constraints import build_all_constraints as _bac, get_bounds as _gb
+
+    # Benchmark b = 100% diesel (HO=F): our proxy for the biodiesel selling price
+    b = np.array([1.0 if t == "HO=F" else 0.0 for t in PORTFOLIO_TICKERS])
+
+    def _margin_var(x):
+        d = x - b
+        return d @ cov_matrix @ d          # (x - b)' Sigma (x - b) = variance of the margin
+
+    _res = _minimize(
+        _margin_var, np.ones(len(PORTFOLIO_TICKERS)) / len(PORTFOLIO_TICKERS),
+        method="SLSQP",
+        bounds=_gb(concentration_cap=concentration_cap, n_assets=len(PORTFOLIO_TICKERS)),
+        constraints=_bac(sustainability_min=sustainability_min),
+        options={"maxiter": 500, "ftol": 1e-12},
+    )
+    w_margin = _res.x
+    w_cost = min_variance_portfolio(constrained_frontier)["weights"]
+
+    def _cost_risk(x):
+        return np.sqrt(x @ cov_matrix @ x)
+
+    def _margin_risk(x):
+        return np.sqrt(_margin_var(x))
+
+    st.markdown(
+        "Our client sells biodiesel at a price linked to diesel, so its **margin** is roughly "
+        "*selling price change − feedstock cost change*. Minimizing the variance of the margin is "
+        "the same as minimizing the **tracking error** against a benchmark *b* = 100% diesel (LN2): "
+        "$\\min_x \\,(x-b)^\\top\\Sigma\\,(x-b)$, with the same three client rules."
+    )
+    st.dataframe(pd.DataFrame({
+        "Stable costs (our recommendation)": [f"{w:.1%}" for w in w_cost]
+            + [f"{_cost_risk(w_cost):.2%}", f"{_margin_risk(w_cost):.2%}", f"{sustainability_share(w_cost):.0%}"],
+        "Stable margin (tracking error vs diesel)": [f"{w:.1%}" for w in w_margin]
+            + [f"{_cost_risk(w_margin):.2%}", f"{_margin_risk(w_margin):.2%}", f"{sustainability_share(w_margin):.0%}"],
+    }, index=PORTFOLIO_TICKERS + ["Daily cost risk", "Daily margin risk", "Waste share (RED2)"]))
+    st.caption(
+        "The stable-margin mix buys more diesel-linked UCO and soybean oil, because their costs move with "
+        "the selling price. Its costs move more, but its margin moves less. Limit: the selling price "
+        "of European biodiesel follows Rotterdam gasoil; we use HO=F as a free proxy."
+    )
+
+
+# --- rapeseed basis-risk check: ZS=F (US soybeans) vs Euronext rapeseed -------
+
+with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Euronext)"):
+    _rs = pd.read_csv("data/rapeseed_euronext.csv", thousands=",")
+    _rs["Date"] = pd.to_datetime(_rs["Date"], format="%m/%d/%Y")
+    _rs = _rs.set_index("Date").sort_index()["Price"].astype(float).rename("Rapeseed (Euronext)")
+
+    # find the app's price table (the DataFrame with ZS=F prices, not returns)
+    _px = next(v for v in list(globals().values())
+               if isinstance(v, pd.DataFrame) and {"ZS=F", "ZL=F"} <= set(v.columns)
+               and v["ZS=F"].dropna().min() > 100)
+
+    _d = pd.concat([_px[["ZS=F", "ZL=F"]], _rs], axis=1, sort=True).dropna()
+    _wk = _d.resample("W-FRI").last().dropna()
+    _ret = np.log(_wk).diff().dropna()
+
+    # Euronext contracts expire Feb/May/Aug/Nov: the continuous series jumps at each roll.
+    # Remove the weeks that contain a roll, so we measure prices, not contract changes.
+    _roll_days = _rs.index[_rs.index.month.isin([2, 5, 8, 11]) & (_rs.index.day <= 3)]
+    _roll_weeks = set(_roll_days.to_period("W-FRI").end_time.normalize())
+    _ret = _ret[~_ret.index.normalize().isin(_roll_weeks)]
+
+    _c_zs = _ret["ZS=F"].corr(_ret["Rapeseed (Euronext)"])
+    _c_zl = _ret["ZL=F"].corr(_ret["Rapeseed (Euronext)"])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Correlation ZS=F vs rapeseed", f"{_c_zs:.2f}")
+    c2.metric("Correlation ZL=F vs rapeseed", f"{_c_zl:.2f}")
+    c3.metric("Weeks compared", f"{len(_ret)}")
+
+    st.line_chart((_wk / _wk.iloc[0] * 100).rename(columns={
+        "ZS=F": "US soybeans (ZS=F)", "ZL=F": "US soybean oil (ZL=F)"}))
+    st.caption(
+        "Prices indexed to 100 at the start. Correlation of weekly returns; roll weeks removed. "
+        "Rapeseed is in €/tonne and ZS=F in US cents per bushel, so we compare price changes, "
+        "not price levels. A correlation of about 0.4 means US soybeans explain only a small "
+        "part of European rapeseed moves (R² = corr² ≈ 0.2): the basis risk is large. "
+        "Soybean oil (ZL=F) follows rapeseed a little better than soybeans. "
+        "Source: Euronext rapeseed futures (COMc1), Investing.com."
+    )
