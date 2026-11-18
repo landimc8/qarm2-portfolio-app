@@ -207,10 +207,12 @@ provenance = sanity_check(raw_prices)
 with st.expander("Data provenance -- where this comes from, exactly"):
     st.markdown(
         f"""
-        All prices come from **Yahoo Finance**, pulled through the
+        All portfolio prices come from **Yahoo Finance**, pulled through the
         [`yfinance`](https://pypi.org/project/yfinance/) Python library --
         this mirrors Yahoo's own end-of-day data rather than a separate
-        paid vendor.
+        paid vendor. The only exception is the Rotterdam gasoil price in the
+        basis-risk check at the bottom, which comes from Investing.com
+        (Yahoo does not carry it).
 
         - **Price field:** `Close`, with `auto_adjust=True` -- Yahoo's
           *adjusted* close (splits/dividends folded in), not the raw print.
@@ -230,7 +232,10 @@ with st.expander("Data provenance -- where this comes from, exactly"):
           the day from the dataset.
         """
     )
-    st.dataframe(pd.DataFrame(provenance).T)
+    prov_df = pd.DataFrame(provenance).T
+    prov_df["first_date"] = pd.to_datetime(prov_df["first_date"]).dt.date
+    prov_df["last_date"] = pd.to_datetime(prov_df["last_date"]).dt.date
+    st.dataframe(prov_df)
 
 with st.expander("Crack spread diagnostic (HO=F x 42 minus CL=F, $/bbl)"):
     st.markdown(
