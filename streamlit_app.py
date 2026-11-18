@@ -297,9 +297,9 @@ ax.legend()
 st.pyplot(fig)
 
 st.caption(
-    "The gap between the two curves is what the sustainability minimum and "
-    "concentration cap 'cost' the client in expected return per unit of risk "
-    "-- the price of staying RED2-eligible and supply-diversified."
+    "The gap between the grey and blue lines is the cost of the client's rules: for the same "
+    "risk, the blue line gives less return. At the default settings, the safest mix already "
+    "holds more than 40% waste, so most of this cost comes from the 35% cap per feedstock."
 )
 
 # live evidence for the diversification note in the basis-risk expander
@@ -309,13 +309,10 @@ st.caption(
 # presenter pointing down at it right after the frontier plot.
 crop_correlation = pairwise_correlation(cov_matrix, PORTFOLIO_TICKERS, "ZL=F", "ZS=F")
 st.caption(
-    f"**Diversification check** -- over this lookback window, ZL=F and ZS=F are "
-    f"{crop_correlation:.0%} correlated. This is the live number behind the "
-    f"basis-risk note above. There is no reliably sourced figure for what a "
-    f"genuine soybean-oil/rapeseed-oil pair would score, so this number is "
-    f"reported on its own terms rather than framed as 'more correlated than "
-    f"it should be.' It will move if the lookback window or the market "
-    f"itself changes."
+    f"**Diversification check:** over this period, ZL=F and ZS=F are "
+    f"**{crop_correlation:.0%}** correlated: they often move together, but not always. "
+    f"Both come from the Chicago soybean market, so our two crop feedstocks are less "
+    f"diversified than planned. This number updates when you change the years slider."
 )
 
 
