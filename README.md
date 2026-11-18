@@ -4,7 +4,7 @@
 
 **Live app:** https://biodiesel-hedging-optimizer.streamlit.app/
 
-> **Status:** the app is working. The full documentation (methodology, data provenance, limitations) is being added.
+> **Status:** the app is working. The full documentation (methodology, data provenance, limitations) is being added
 
 ## What it does
 
