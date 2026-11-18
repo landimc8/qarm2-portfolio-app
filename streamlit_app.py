@@ -269,7 +269,7 @@ st.header("Efficient frontier: constrained vs. unconstrained")
 fig, ax = plt.subplots(figsize=(9, 5))
 valid_u = unconstrained_frontier["success"]
 ax.plot(unconstrained_frontier["volatilities"][valid_u], unconstrained_frontier["returns"][valid_u],
-        label="Unconstrained (budget + long-only only)", linestyle="--", color="gray")
+        label="Unconstrained (budget + long-only)", linestyle="--", color="gray")
 valid_c = constrained_frontier["success"]
 ax.plot(constrained_frontier["volatilities"][valid_c], constrained_frontier["returns"][valid_c],
         label="Constrained (RED2 + concentration cap)", color="steelblue", linewidth=2)
