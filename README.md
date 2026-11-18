@@ -1,32 +1,78 @@
-# Rotterdam Biofuels SA — Feedstock Cost-Risk Hedging
+# Biodiesel Feedstock Hedging Optimizer
 
-**QARM II Project (HEC Lausanne)**
+A Streamlit app for our QARM II project (HEC Lausanne, Prof. Marc-Aurèle Divernois).
 
 **Live app:** https://biodiesel-hedging-optimizer.streamlit.app/
 
-> **Status:** the app is working. The full documentation (methodology, data provenance, limitations) is being added
+**Team:** Betty Mikeal, Danela Vlacic, Imen Hassine and Zildete Landim Crausaz
 
-## What it does
+## The idea
 
-An interactive Streamlit tool that builds a feedstock procurement strategy for a biodiesel producer. It minimizes cost volatility while respecting three client rules: a minimum share of waste-based feedstocks (EU RED2), a concentration cap per feedstock, and a procurement budget. It uses constrained mean-variance optimization, with risk budgeting as a second lens.
+Our client, **Rotterdam Biofuels SA** (fictional), makes biodiesel. It has to buy raw materials (feedstocks) such as vegetable oils and animal fats, and their prices move a lot.
 
-## Files
+The app answers one question: **which mix of feedstocks keeps the client's costs as stable as possible?**
 
-- `streamlit_app.py`: the app interface (run this one)
-- `data_loader.py`: downloads and cleans prices from Yahoo Finance
-- `constraints.py`: the client's rules
-- `optimizer.py`: the optimization and risk budgeting math
-- `requirements.txt`: Python packages needed
+We treat the feedstocks like a portfolio and use the minimum variance method from class (Markowitz).
 
-## Run locally
+## The client's three rules
 
-```
-git clone https://github.com/landimc8/qarm2-portfolio-app.git
-cd qarm2-portfolio-app
+1. **Spend 100% of the budget**, with no short selling.
+2. **No more than 35% in one feedstock**, so the client is not too dependent on one supplier.
+3. **At least 40% waste-based feedstocks** (UCO and animal fat), for the EU rules on biofuels (RED II).
+
+You can change the last two rules with the sliders in the app.
+
+## The feedstocks and their proxies
+
+Most real feedstock prices are not free, so we use free Yahoo Finance prices that move in a similar way:
+
+| Real feedstock | Proxy we use |
+|---|---|
+| Soybean oil | ZL=F (soybean oil futures) |
+| Rapeseed | ZS=F (US soybean futures) |
+| Used cooking oil (UCO) | HO=F (US diesel futures) |
+| Tallow (animal fat) | LE=F (live cattle futures) and DAR (Darling Ingredients) |
+
+## What the app shows
+
+- **The efficient frontier**, with and without the client's rules.
+- **Our recommended mix** (minimum variance) and the Sharpe-equivalent mix for comparison.
+- **Risk contributions**: which feedstock brings the most risk.
+- **Cost-at-Risk**: how much the costs could go up in a bad month.
+- **Why minimum variance, not Sharpe**: the client is a buyer, so stable costs matter more than "return".
+- **Stable costs or stable margin?** A second goal for a client that sells at diesel-linked prices.
+- **Two basis-risk checks**: how well our proxies follow the real European prices.
+  - Diesel (HO=F) vs Rotterdam gasoil: a good proxy.
+  - US soybeans (ZS=F) vs Euronext rapeseed: a weak proxy (correlation about 0.44).
+- **The crack spread**: the difference between diesel and crude oil prices.
+
+## Data
+
+- Portfolio prices: **Yahoo Finance** (free), downloaded by the app.
+- Rotterdam gasoil and Euronext rapeseed: **Investing.com** CSV files in the `data` folder, used only for the checks.
+
+## How to run it on your computer
+
+```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Team
+The app then opens in your browser.
 
-Betty Mikeal, Danela Vlacic, Imen Hassine, Zildete Landim Crausaz
+## Main files
+
+| File | What it does |
+|---|---|
+| `streamlit_app.py` | The app: sliders, charts and tables |
+| `data_loader.py` | Downloads the prices and computes returns |
+| `optimizer.py` | Computes the frontier, minimum variance and Sharpe |
+| `constraints.py` | The client's three rules |
+| `data/` | The gasoil and rapeseed files for the checks |
+
+## Limits
+
+- **Proxies are not the real prices.** Rapeseed is the weakest one.
+- **The mix does not lock prices.** To fix a price, the client would also need futures contracts.
+- **Prices are in US dollars**, but the client works in euros.
+- **The mix is based on past data**, so it should be updated regularly.
