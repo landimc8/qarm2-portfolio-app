@@ -102,7 +102,7 @@ with st.expander("A note on the data (basis risk)"):
           returned "possibly delisted; no price data found" for RS=F on
           every attempt, confirmed across repeated pulls rather than a
           one-off network issue. This tracks with canola/rapeseed trading
-          on ICE Futures Canada rather than a CME Group exchange, where
+          on ICE rather than a CME Group exchange, where
           Yahoo's futures coverage is noticeably thinner. ZS=F steps in as
           a reliably available, still crop-based substitute.
 
@@ -232,7 +232,7 @@ with st.expander("Data provenance -- where this comes from, exactly"):
     )
     st.dataframe(pd.DataFrame(provenance).T)
 
-with st.expander("Crack spread diagnostic (HO=F minus CL=F)"):
+with st.expander("Crack spread diagnostic (HO=F x 42 minus CL=F, $/bbl)"):
     st.markdown(
         "The HO-CL crack spread is a standard refining-margin diagnostic. "
         "**CL=F is never given a portfolio weight** (see the basis-risk note "
@@ -243,7 +243,7 @@ with st.expander("Crack spread diagnostic (HO=F minus CL=F)"):
     crack_spread = compute_crack_spread(cleaned_for_spread)
     fig_spread, ax_spread = plt.subplots(figsize=(9, 3))
     ax_spread.plot(crack_spread.index, crack_spread.values, color="#555555", linewidth=1)
-    ax_spread.set_ylabel("HO=F - CL=F ($)")
+    ax_spread.set_ylabel("HO=F x 42 - CL=F ($/bbl)")
     ax_spread.set_title("Diesel-crude crack spread over the lookback window")
     st.pyplot(fig_spread)
 

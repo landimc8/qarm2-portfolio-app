@@ -125,8 +125,8 @@ def compute_returns(prices):
 
 
 def compute_crack_spread(prices):
-    """HO=F minus CL=F -- diagnostic only, not a portfolio weight."""
-    return prices["HO=F"] - prices["CL=F"]
+    """HO=F (x42 to convert $/gal to $/bbl) minus CL=F -- diagnostic only, not a portfolio weight."""
+    return prices["HO=F"] * 42 - prices["CL=F"]  # HO is $/gal, CL is $/bbl -> both in $/bbl
 
 
 def get_returns_for_optimizer(years=5, force_refresh=False):
