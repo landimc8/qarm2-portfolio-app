@@ -499,3 +499,48 @@ with st.expander("Basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F)"):
         )
     except FileNotFoundError:
         st.info("Add the ICE gasoil CSV as data/gasoil_ice.csv to show this check.")
+
+
+# --- why minimum variance: side-by-side comparison --------------------------
+
+with st.expander("Why we recommend minimum variance (not Sharpe)"):
+    mv_pick = min_variance_portfolio(constrained_frontier)
+    sr_pick = max_sharpe_equivalent_portfolio(constrained_frontier)
+    horizon = car_horizon if "car_horizon" in globals() else 21
+    conf = car_conf if "car_conf" in globals() else "95%"
+    z_val = 1.645 if conf == "95%" else 2.326
+
+    def _why_row(p):
+        rc_p = risk_contributions(p["weights"], cov_matrix)
+        top = int(np.argmax(rc_p))
+        return [
+            f"{p['volatility']:.2%}",
+            f"{p['return']:.3%}",
+            f"{(1 + p['return']) ** 252 - 1:+.1%}",
+            f"${procurement_budget * p['volatility'] * np.sqrt(horizon) * z_val:,.0f}",
+            f"{p['return'] / p['volatility']:.3f}",
+            f"{PORTFOLIO_TICKERS[top]} ({rc_p[top]:.0%})",
+            f"{sustainability_share(p['weights']):.0%}",
+        ]
+
+    st.markdown(
+        "Our client is a **buyer**: a higher 'return' means feedstock prices going up, "
+        "so higher costs. The goal is **stable costs**, which is what minimum variance gives."
+    )
+    st.dataframe(pd.DataFrame({
+        "Minimum variance (recommended)": _why_row(mv_pick),
+        "Sharpe-equivalent": _why_row(sr_pick),
+    }, index=[
+        "Daily risk: σ(x) = √(xᵀΣx)",
+        "Daily 'return' = price increase: μ(x) = xᵀμ",
+        "Price increase over a year: (1 + μ)^252 − 1",
+        f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
+        "Return per risk: μ / σ",
+        "Main risk source: RC*ᵢ (LN5)",
+        "Waste share (RED2)",
+    ]))
+    st.caption(
+        "Minimum variance always has the lowest risk by definition. We recommend it because "
+        "stable costs are the right goal for a buyer. Cost-at-Risk is a standard parametric "
+        "VaR (not from the course)."
+    )
