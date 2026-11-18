@@ -20,8 +20,6 @@ We treat the feedstocks like a portfolio and use the minimum variance method fro
 2. **No more than 35% in one feedstock**, so the client is not too dependent on one supplier.
 3. **At least 40% waste-based feedstocks** (UCO and animal fat), for the EU rules on biofuels (RED II).
 
-You can change the last two rules with the sliders in the app.
-
 ## The feedstocks and their proxies
 
 Most real feedstock prices are not free, so we use free Yahoo Finance prices that move in a similar way:
