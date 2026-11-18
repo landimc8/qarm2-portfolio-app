@@ -49,7 +49,7 @@ Most real feedstock prices are not free, so we use free Yahoo Finance prices tha
 - Portfolio prices: **Yahoo Finance** (free), downloaded by the app.
 - Rotterdam gasoil and Euronext rapeseed: **Investing.com** CSV files in the `data` folder, used only for the checks.
 
-## How to run it on your computer
+## How to run it 
 
 ```bash
 pip install -r requirements.txt
