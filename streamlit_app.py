@@ -413,3 +413,23 @@ with st.expander("Show raw weights and risk contributions"):
         }
         for ticker, w, r in zip(PORTFOLIO_TICKERS, weights, rc)
     })
+
+
+# --- global minimum variance (LN1 closed form, no client rules) -------------
+
+with st.expander("Compare: global minimum variance (no rules) vs our recommended mix"):
+    ones = np.ones(len(PORTFOLIO_TICKERS))
+    inv_cov = np.linalg.inv(cov_matrix)
+    w_gmv = inv_cov @ ones / (ones @ inv_cov @ ones)          # Sigma^-1 1 / 1' Sigma^-1 1
+    vol_gmv = np.sqrt(w_gmv @ cov_matrix @ w_gmv)
+    st.markdown(
+        "Global minimum variance from LN1: "
+        "$x_{gmv} = \\Sigma^{-1}\\mathbf{1} / \\mathbf{1}^\\top\\Sigma^{-1}\\mathbf{1}$ "
+        "(only the budget rule, short selling allowed)."
+    )
+    st.dataframe(pd.DataFrame({
+        "Global MV (no rules)": [f"{w:.1%}" for w in w_gmv],
+        "Our recommended mix": [f"{w:.1%}" for w in weights],
+    }, index=PORTFOLIO_TICKERS))
+    st.write(f"Daily risk: global MV **{vol_gmv:.2%}** vs our mix **{recommended['volatility']:.2%}**. "
+             "The difference is the cost of the client's rules.")
