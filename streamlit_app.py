@@ -234,17 +234,27 @@ with st.expander("Data provenance -- where this comes from, exactly"):
 
 with st.expander("Crack spread diagnostic (HO=F x 42 minus CL=F, $/bbl)"):
     st.markdown(
-        "The HO-CL crack spread is a standard refining-margin diagnostic. "
-        "**CL=F is never given a portfolio weight** (see the basis-risk note "
-        "above) -- it only feeds this chart, as a rough read on diesel "
-        "refining economics alongside the UCO proxy, HO=F."
+        "This chart shows the gap between the diesel price and the crude oil price: "
+        "how much a refinery earns per barrel. We use diesel (HO=F) as the proxy for "
+        "used cooking oil, because fuel made from UCO is sold in the same market as diesel. "
+        "When this gap is large, diesel is expensive, and used cooking oil usually gets "
+        "more expensive too. **Crude oil (CL=F) is only used for this chart. It is not "
+        "part of the portfolio.**"
     )
     cleaned_for_spread = clean_prices(raw_prices)
     crack_spread = compute_crack_spread(cleaned_for_spread)
-    fig_spread, ax_spread = plt.subplots(figsize=(9, 3))
+    diesel_bbl = cleaned_for_spread["HO=F"] * 42      # $/gal -> $/bbl
+    crude_bbl = cleaned_for_spread["CL=F"]
+    fig_spread, (ax_px, ax_spread) = plt.subplots(2, 1, figsize=(9, 5), sharex=True,
+                                                  gridspec_kw={"height_ratios": [2, 1]})
+    ax_px.plot(diesel_bbl.index, diesel_bbl.values, color="#eb6834", linewidth=1, label="Diesel (HO=F x 42)")
+    ax_px.plot(crude_bbl.index, crude_bbl.values, color="#2a78d6", linewidth=1, linestyle="--",
+               label="WTI crude (CL=F)")
+    ax_px.set_ylabel("$ per barrel")
+    ax_px.set_title("Diesel and crude prices, and the crack spread between them")
+    ax_px.legend()
     ax_spread.plot(crack_spread.index, crack_spread.values, color="#555555", linewidth=1)
-    ax_spread.set_ylabel("HO=F x 42 - CL=F ($/bbl)")
-    ax_spread.set_title("Diesel-crude crack spread over the lookback window")
+    ax_spread.set_ylabel("Crack ($/bbl)")
     st.pyplot(fig_spread)
 
 constrained_frontier = load_constrained_frontier(
@@ -443,3 +453,47 @@ with st.expander("Compare: global minimum variance (no rules) vs our recommended
         "The analytical solution has no negative weights on our data, so it matches the grey line's safest point (small differences come from the 50-point grid). Our mix is riskier because the "
         "35% cap limits live cattle: that is the cost of the client's rules."
     )
+
+
+# --- basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F) -------------
+
+GASOIL_FILE = "data/gasoil_ice.csv"   # ICE London Gas Oil, Investing.com export ($/tonne)
+
+with st.expander("Basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F)"):
+    try:
+        gas = pd.read_csv(GASOIL_FILE, thousands=",")
+        gas["Date"] = pd.to_datetime(gas["Date"], format="%m/%d/%Y")
+        gas = gas.set_index("Date")["Price"].sort_index() / 7.45      # $/tonne -> $/bbl
+        ho = clean_prices(raw_prices)["HO=F"] * 42                    # $/gal -> $/bbl
+        both = pd.concat({"Gasoil (Rotterdam)": gas, "HO=F (New York)": ho}, axis=1, sort=True).dropna()
+        weekly = both.resample("W-FRI").last().dropna()
+        premium = weekly["HO=F (New York)"] - weekly["Gasoil (Rotterdam)"]
+        corr_w = weekly.pct_change().dropna().corr().iloc[0, 1]
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Weekly return correlation", f"{corr_w:.0%}")
+        m2.metric("Average NY premium", f"{premium.mean():+.1f} $/bbl")
+        m3.metric("Largest gap", f"${premium.abs().max():.0f}/bbl")
+
+        fig_b, (ax_p, ax_s) = plt.subplots(2, 1, figsize=(9, 5), sharex=True,
+                                           gridspec_kw={"height_ratios": [2, 1]})
+        ax_p.plot(weekly.index, weekly["Gasoil (Rotterdam)"], color="#1baf7a", label="ICE gasoil (/ 7.45)")
+        ax_p.plot(weekly.index, weekly["HO=F (New York)"], color="#eb6834", linestyle="--",
+                  label="HO=F (x 42), our UCO proxy")
+        ax_p.set_ylabel("$ per barrel")
+        ax_p.legend()
+        ax_s.fill_between(premium.index, premium, 0, color="gray", alpha=0.2)
+        ax_s.plot(premium.index, premium, color="gray", linewidth=1)
+        ax_s.axhline(0, color="black", linewidth=0.5)
+        ax_s.set_ylabel("NY premium ($/bbl)")
+        st.pyplot(fig_b)
+
+        st.caption(
+            "Our client buys in Rotterdam, but our proxy for used cooking oil is the New York "
+            "diesel price. Here we compare it with the real Rotterdam diesel price (ICE gasoil). "
+            "Most weeks, the two prices move together. But in a crisis, like 2022, the gap "
+            "between them can jump. That gap is our basis risk. Gasoil prices come from "
+            "Investing.com, converted from $ per tonne to $ per barrel."
+        )
+    except FileNotFoundError:
+        st.info("Add the ICE gasoil CSV as data/gasoil_ice.csv to show this check.")
