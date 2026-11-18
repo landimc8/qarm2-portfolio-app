@@ -104,13 +104,13 @@ with st.expander("A note on the data (basis risk)"):
           one-off network issue. This tracks with canola/rapeseed trading
           on ICE rather than a CME Group exchange, where
           Yahoo's futures coverage is noticeably thinner. ZS=F steps in as
-          a reliably available, still crop-based substitute.
+          a reliably available, still crop-based substitute. Note that ZS=F is the soybean *seed*, not an oil, so it carries two layers of basis risk: a different crop, and seed versus oil (the crush margin).
 
         This is a deliberate modeling choice, not an oversight -- the gap
         between a hedging proxy and the true underlying exposure is a
         known, accepted limitation in real-world hedging called **basis
         risk**. The optimizer below minimizes variance of the proxy
-        basket; true UCO/tallow cost variance would be somewhat higher.
+        basket, so the client's real cost risk is likely higher than the app reports, because the proxies do not capture all of the real prices' moves. The basis-risk check at the bottom of the page measures this gap for UCO (New York diesel vs Rotterdam gasoil).
 
         **One limitation worth flagging directly:** ZL=F and ZS=F are
         both part of the CBOT soybean complex, so the crop-based leg is
