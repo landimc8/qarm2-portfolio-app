@@ -733,17 +733,20 @@ with st.expander("Profit-at-Risk calculator: how much profit could the client lo
         d = (_revenue * _share * _b if follows_diesel else 0.0) - _feed * w
         return float(np.sqrt(d @ _cov @ d) * np.sqrt(_h) * _z)
 
+    def _usd(v):
+        return f"-${abs(v):,.0f}" if v < 0 else f"${v:,.0f}"
+
     _follows = _sales == "Selling price follows diesel"
     _par_main, _par_margin = _par(_w_main, _follows), _par(_w_margin, _follows)
     _best = "main mix (stable costs)" if _par_main <= _par_margin else "stable-margin mix"
     _par_best = min(_par_main, _par_margin)
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Expected monthly profit", f"${_profit:,.0f}",
+    m1.metric("Expected monthly profit", _usd(_profit),
               help="Sales - feedstock budget - other costs")
     m2.metric(f"Profit-at-Risk ({_lvl}, {_h} days)", f"${_par_best:,.0f}",
               help=f"With the {_best}")
-    m3.metric("Profit in a bad month", f"${_profit - _par_best:,.0f}")
+    m3.metric("Profit in a bad month", _usd(_profit - _par_best))
 
     st.dataframe(pd.DataFrame({
         "Main mix (stable costs)": [f"${_par(_w_main, False):,.0f}", f"${_par(_w_main, True):,.0f}"],
@@ -753,10 +756,13 @@ with st.expander("Profit-at-Risk calculator: how much profit could the client lo
     st.markdown(
         f"For a client whose {'selling price follows diesel' if _follows else 'selling price is fixed'}, "
         f"the **{_best}** protects the profit best: "
-        f"in a bad month, it could lose about **${_par_best:,.0f}** of its **${_profit:,.0f}** profit. "
-        f"The other mix would put **${abs(_par_main - _par_margin):,.0f} more** at risk."
+        f"in a bad month, it could lose about **{_usd(_par_best)}** of its **{_usd(_profit)}** profit. "
+        f"The other mix would put **{_usd(abs(_par_main - _par_margin))} more** at risk.".replace("$", "\\$")
     )
-    if _profit - _par_best < 0:
+    if _profit < 0:
+        st.error("With these inputs the client loses money even in a normal month: sales are lower than "
+                 "feedstock + other costs. Check the selling price, tonnes and the budget in the sidebar.")
+    elif _profit - _par_best < 0:
         st.warning("In a bad month, the profit could turn into a loss. The client may also need futures to lock prices.")
     st.caption(
         "Profit-at-Risk = √(dᵀΣd) × √days × z, where d = dollar exposure: + the diesel-linked part of sales "
