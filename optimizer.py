@@ -202,7 +202,8 @@ def compute_constrained_frontier(mean_returns, cov_matrix,
     earlier version of this file -- the concentration slider would've
     silently done nothing.
     """
-    extra_constraints = build_all_constraints(sustainability_min=sustainability_min)
+    extra_constraints = build_all_constraints(sustainability_min=sustainability_min,
+                                              concentration_cap=concentration_cap)
     bounds = get_bounds(concentration_cap=concentration_cap, n_assets=len(mean_returns))
     return compute_frontier(mean_returns, cov_matrix, extra_constraints, bounds, n_points)
 

@@ -136,8 +136,9 @@ sustainability_min = st.sidebar.slider(
 )
 concentration_cap = st.sidebar.slider(
     "Maximum weight per feedstock (concentration cap)",
-    min_value=0.20, max_value=1.00, value=0.35, step=0.05,
-    help="No single feedstock may exceed this share of the procurement budget.",
+    min_value=0.25, max_value=1.00, value=0.35, step=0.05,
+    help="No single feedstock may exceed this share of the procurement budget. "
+         "Tallow counts once: LE=F + DAR together. Minimum 25%, because 4 real feedstocks x 25% = 100%.",
 )
 years_lookback = st.sidebar.slider("Years of historical data", 1, 10, 5, 1)
 n_frontier_points = st.sidebar.slider("Frontier resolution (points)", 10, 100, 50, 10)
@@ -381,8 +382,12 @@ with col2:
               help=f"Target minimum: {sustainability_min:.0%}")
     st.markdown(f"{'✅ **PASS**' if sustainability_pass else '❌ **FAIL**'} -- RED2 sustainability minimum")
 
-    concentration_pass = weights.max() <= concentration_cap + 1e-9
-    st.metric("Largest single feedstock weight", f"{weights.max():.1%}")
+    _real = {t: w for t, w in zip(PORTFOLIO_TICKERS, weights) if t not in ("LE=F", "DAR")}
+    _real["Tallow (LE=F + DAR)"] = sum(w for t, w in zip(PORTFOLIO_TICKERS, weights) if t in ("LE=F", "DAR"))
+    largest_real = max(_real.values())
+    concentration_pass = largest_real <= concentration_cap + 1e-9
+    st.metric("Largest single feedstock weight", f"{largest_real:.1%}",
+              help="Tallow counts as one feedstock: LE=F + DAR together.")
     st.markdown(f"{'✅ **PASS**' if concentration_pass else '❌ **FAIL**'} -- concentration cap")
 
     if "sharpe_equivalent" in recommended:  # only the Sharpe pick has this key
@@ -563,7 +568,7 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel, LN2)
         _margin_var, np.ones(len(PORTFOLIO_TICKERS)) / len(PORTFOLIO_TICKERS),
         method="SLSQP",
         bounds=_gb(concentration_cap=concentration_cap, n_assets=len(PORTFOLIO_TICKERS)),
-        constraints=_bac(sustainability_min=sustainability_min),
+        constraints=_bac(sustainability_min=sustainability_min, concentration_cap=concentration_cap),
         options={"maxiter": 500, "ftol": 1e-12},
     )
     w_margin = _res.x

@@ -41,6 +41,22 @@ def sustainability_constraint(sustainability_min=DEFAULT_SUSTAINABILITY_MIN,
     return {"type": "ineq", "fun": _constraint_fn}
 
 
+# LE=F and DAR are two proxies for ONE real feedstock (tallow), so the
+# concentration cap must apply to them together, not one by one.
+TALLOW_PROXIES = ["LE=F", "DAR"]
+
+
+def tallow_cap_constraint(concentration_cap=DEFAULT_CONCENTRATION_CAP,
+                          tickers=PORTFOLIO_TICKERS):
+    """LE=F + DAR together must stay under the cap: tallow is one feedstock with two proxies."""
+    tallow_idx = [tickers.index(t) for t in TALLOW_PROXIES if t in tickers]
+
+    def _constraint_fn(weights):
+        return concentration_cap - sum(weights[i] for i in tallow_idx)  # >= 0 is fine
+
+    return {"type": "ineq", "fun": _constraint_fn}
+
+
 def budget_constraint():
     """Weights sum to 1 -- spend the whole procurement budget, nothing left over."""
     return {"type": "eq", "fun": lambda weights: np.sum(weights) - 1.0}
@@ -58,19 +74,24 @@ def get_bounds(concentration_cap=DEFAULT_CONCENTRATION_CAP, n_assets=len(PORTFOL
     return tuple((0.0, concentration_cap) for _ in range(n_assets))
 
 
-def build_all_constraints(sustainability_min=DEFAULT_SUSTAINABILITY_MIN, tickers=PORTFOLIO_TICKERS):
+def build_all_constraints(sustainability_min=DEFAULT_SUSTAINABILITY_MIN, tickers=PORTFOLIO_TICKERS,
+                          concentration_cap=DEFAULT_CONCENTRATION_CAP):
     """
     What optimizer.py passes to minimize() as constraints=. Just
     sustainability + budget -- concentration cap and long-only live in
     get_bounds(), passed separately as bounds=.
     """
-    return [sustainability_constraint(sustainability_min, tickers), budget_constraint()]
+    return [sustainability_constraint(sustainability_min, tickers),
+            tallow_cap_constraint(concentration_cap, tickers),
+            budget_constraint()]
 
 
 if __name__ == "__main__":
-    # equal weight should pass everything at the defaults: 5 assets at
-    # 20% each, under the 35% cap, waste-based trio sums to 60% (>= 40%)
-    test_weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
+    # this mix should pass everything at the defaults: every weight under
+    # the 35% cap, tallow (LE=F + DAR) = 30% under the cap, waste-based
+    # trio = 50% (>= 40%). Note: equal weight (20% each) now FAILS,
+    # because tallow would be 20% + 20% = 40%, above the 35% cap.
+    test_weights = np.array([0.25, 0.25, 0.20, 0.15, 0.15])
     constraints = build_all_constraints()
     bounds = get_bounds()
 
