@@ -639,3 +639,42 @@ with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Eur
         "Soybean oil (ZL=F) follows rapeseed a little better than soybeans. "
         "Source: Euronext rapeseed futures (COMc1), Investing.com."
     )
+
+
+# --- does the mix really reduce cost swings? (diversification proof) ---------
+
+with st.expander("How much does our mix reduce cost swings?"):
+    _w_mix = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+    _r = returns[PORTFOLIO_TICKERS]
+    _monthly = (1 + _r).resample("ME").prod() - 1          # monthly price change of each proxy
+    _cov = np.asarray(cov_matrix)
+
+    _names = {"ZL=F": "Only soybean oil (ZL=F)", "ZS=F": "Only soybeans (ZS=F)",
+              "HO=F": "Only UCO (diesel, HO=F)", "LE=F": "Only live cattle (LE=F)",
+              "DAR": "Only Darling (DAR)"}
+    _options = {_names.get(t, "Only " + t): np.eye(len(PORTFOLIO_TICKERS))[i]
+                for i, t in enumerate(PORTFOLIO_TICKERS)}
+    _options["Equal split (20% each)"] = np.ones(len(PORTFOLIO_TICKERS)) / len(PORTFOLIO_TICKERS)
+    _options["Our recommended mix"] = _w_mix
+
+    _rows = []
+    for _label, _w in _options.items():
+        _m = float((_monthly.values @ _w).std())             # typical monthly cost change
+        _rows.append([_label, f"{np.sqrt(_w @ _cov @ _w):.2%}", f"{_m:.1%}", f"${procurement_budget * _m:,.0f}"])
+    _tab = pd.DataFrame(_rows, columns=["What the client buys", "Daily cost risk",
+                                        "Typical monthly cost change", "In money (monthly)"]).set_index("What the client buys")
+    st.dataframe(_tab)
+
+    _m_mix = float((_monthly.values @ _w_mix).std())
+    _m_eq = float((_monthly.values @ _options["Equal split (20% each)"]).std())
+    _m_max = max(float(_monthly[t].std()) for t in PORTFOLIO_TICKERS)
+    st.markdown(
+        f"Our mix moves **{_m_max / _m_mix:.1f} times less** than the riskiest single feedstock, "
+        f"and **{1 - _m_mix / _m_eq:.0%} less** than a simple equal split."
+    )
+    st.caption(
+        "Typical monthly cost change = standard deviation of the monthly price change of each option, "
+        "on the same data as the model. This is diversification: the feedstocks don't all move together, "
+        "so the cost of the mix moves less. In-sample: the weights come from the same data. "
+        "The equal split is only a comparison: it breaks the tallow cap (LE=F + DAR = 40%)."
+    )
