@@ -678,3 +678,89 @@ with st.expander("How much does our mix reduce cost swings?"):
         "so the cost of the mix moves less. In-sample: the weights come from the same data. "
         "The equal split is only a comparison: it breaks the tallow cap (LE=F + DAR = 40%)."
     )
+
+
+# --- profit-at-risk calculator: what a bad month does to the client's profit --
+
+with st.expander("Profit-at-Risk calculator: how much profit could the client lose?"):
+    from scipy.optimize import minimize as _pminimize
+    from constraints import build_all_constraints as _pbac, get_bounds as _pgb
+
+    st.markdown(
+        "The client enters how it sells its biodiesel. The app shows its expected monthly profit "
+        "and how much of it could disappear in a bad month, with each mix."
+    )
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        _sales = st.radio("How does the client sell its biodiesel?",
+                          ["Fixed selling price", "Selling price follows diesel"], key="pc_sales")
+        _price = st.number_input("Selling price ($ per tonne of biodiesel)", min_value=0.0,
+                                 value=1500.0, step=50.0, key="pc_price")
+    with _c2:
+        _tonnes = st.number_input("Tonnes sold per month", min_value=0.0,
+                                  value=10000.0, step=500.0, key="pc_tonnes")
+        _other = st.number_input("Other costs ($ per tonne: energy, staff, transport)", min_value=0.0,
+                                 value=300.0, step=25.0, key="pc_other")
+    _share = st.slider("If the price follows diesel: share of the selling price that moves with diesel", 0, 100, 67, 1,
+                       key="pc_share", format="%d%%",
+                       help="Example: biodiesel sold at the diesel price + a fixed premium of $500/t. "
+                            "At $1,500/t, the diesel part is $1,000, so 67% of the price moves with diesel.") / 100
+
+    _h = car_horizon if "car_horizon" in globals() else 21
+    _lvl = car_conf if "car_conf" in globals() else "95%"
+    _z = 1.645 if _lvl == "95%" else 2.326
+    _cov = np.asarray(cov_matrix)
+    _n = len(PORTFOLIO_TICKERS)
+    _b = np.array([1.0 if t == "HO=F" else 0.0 for t in PORTFOLIO_TICKERS])   # diesel
+
+    # the two mixes: main (stable costs) and stable margin (tracking error vs diesel, LN2)
+    _w_main = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+    _res = _pminimize(lambda x: (x - _b) @ _cov @ (x - _b), np.ones(_n) / _n, method="SLSQP",
+                      bounds=_pgb(concentration_cap=concentration_cap, n_assets=_n),
+                      constraints=_pbac(sustainability_min=sustainability_min,
+                                        concentration_cap=concentration_cap),
+                      options={"maxiter": 500, "ftol": 1e-12})
+    _w_margin = _res.x
+
+    _revenue = _price * _tonnes
+    _feed = procurement_budget                     # feedstock bill = the budget in the sidebar
+    _other_total = _other * _tonnes
+    _profit = _revenue - _feed - _other_total
+
+    def _par(w, follows_diesel):
+        # dollar exposure to each price: revenue moves with diesel if the price follows diesel,
+        # feedstock costs move with the mix. Profit change = revenue change - cost change.
+        d = (_revenue * _share * _b if follows_diesel else 0.0) - _feed * w
+        return float(np.sqrt(d @ _cov @ d) * np.sqrt(_h) * _z)
+
+    _follows = _sales == "Selling price follows diesel"
+    _par_main, _par_margin = _par(_w_main, _follows), _par(_w_margin, _follows)
+    _best = "main mix (stable costs)" if _par_main <= _par_margin else "stable-margin mix"
+    _par_best = min(_par_main, _par_margin)
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Expected monthly profit", f"${_profit:,.0f}",
+              help="Sales - feedstock budget - other costs")
+    m2.metric(f"Profit-at-Risk ({_lvl}, {_h} days)", f"${_par_best:,.0f}",
+              help=f"With the {_best}")
+    m3.metric("Profit in a bad month", f"${_profit - _par_best:,.0f}")
+
+    st.dataframe(pd.DataFrame({
+        "Main mix (stable costs)": [f"${_par(_w_main, False):,.0f}", f"${_par(_w_main, True):,.0f}"],
+        "Stable-margin mix": [f"${_par(_w_margin, False):,.0f}", f"${_par(_w_margin, True):,.0f}"],
+    }, index=["Fixed selling price", "Selling price follows diesel"]))
+
+    st.markdown(
+        f"For a client whose {'selling price follows diesel' if _follows else 'selling price is fixed'}, "
+        f"the **{_best}** protects the profit best: "
+        f"in a bad month, it could lose about **${_par_best:,.0f}** of its **${_profit:,.0f}** profit. "
+        f"The other mix would put **${abs(_par_main - _par_margin):,.0f} more** at risk."
+    )
+    if _profit - _par_best < 0:
+        st.warning("In a bad month, the profit could turn into a loss. The client may also need futures to lock prices.")
+    st.caption(
+        "Profit-at-Risk = √(dᵀΣd) × √days × z, where d = dollar exposure: + the diesel-linked part of sales "
+        "(only if the price follows diesel), − feedstock budget × mix weights. Same parametric formula as the Cost-at-Risk "
+        "(normal returns, not from the course). Selling price, tonnes and other costs are the client's inputs; "
+        "only the risks come from the model. The stable-margin mix uses diesel (HO=F) as a proxy for the selling price."
+    )
