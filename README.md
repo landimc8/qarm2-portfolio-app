@@ -17,7 +17,7 @@ We treat the feedstocks like a portfolio and use the minimum variance method fro
 ## The client's three rules
 
 1. **Spend 100% of the budget**, with no short selling.
-2. **No more than 35% in one feedstock**, so the client is not too dependent on one supplier.
+2. **No more than 35% in one feedstock**, so the client is not too dependent on one supplier. Tallow counts as one feedstock, so live cattle (LE=F) and Darling (DAR) together stay under 35%.
 3. **At least 40% waste-based feedstocks** (UCO and animal fat), for the EU rules on biofuels (RED II).
 
 ## The feedstocks and their proxies
