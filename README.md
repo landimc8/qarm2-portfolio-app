@@ -8,18 +8,44 @@ A Streamlit app for our QARM II project (HEC Lausanne, Prof. Marc-Aurèle Divern
 
 ## The idea
  
-Our client, **Rotterdam Biofuels SA** (fictional), makes biodiesel. It has to buy raw materials (feedstocks) such as vegetable oils and animal fats, and their prices move a lot.
+Our fictional client, **Rotterdam Biofuels SA**, produces biodiesel using raw materials such as vegetable oils and animal fats.
+
+Fluctuations in commodity prices create uncertainty around the company's production costs. 
  
-The app answers one question: **which mix of feedstocks keeps the client's costs as stable as possible?**
+Our project explores how diversification and quantitative portfolio optimization can help manage financial exposure to these commodity markets.
+
+We construct a portfolio using market-traded instruments as proxies for biodiesel feedstocks and apply Markowitz minimum-variance optimization to identify an allocation with relatively low financial volatility.
+
+The central question is: 
+
+**which mix of feedstocks keeps the client's costs as stable as possible?**
+**Which combination of financial market exposures minimizes portfolio volatility while respecting the client's constraints?**
  
-We treat the feedstocks like a portfolio and use the minimum variance method from class (Markowitz).
- 
+Our focus is on reducing financial portfolio volatility through diversification, while taking into account the producer's exposure to feedstock price fluactuations.
+
+## Investment strategy
+Our primary strategy is constrained minimum-variance optimization.
+Using historical market data, we estimate the returns, volatilities and correlations of five financial instruments.
+We then determine portfolio weights that minimize overall variance while satisfying diversification and thematic allocation constraints.
+The strategy is based on three principles:
+
+1. Diversification: Combining instruments whose returns do not move identically can reduce overall portfolio risk.
+
+2. Risk minimization: The primary allocation minimizes portfolio variance rather than maximizing expected returns.
+
+3. Constrained allocation: The portfolio must respect limits designed to reflect the client's risk preferences and feedstock-related priorities.
+
+We also compare the minimum-variance allocation with a maximum-Sharpe portfolio to illustrate the financial risk–return trade-off.
+
 ## The client's three rules
  
-1. **Spend 100% of the budget**, with no short selling.
-2. **No more than 35% in one feedstock**, so the client is not too dependent on one supplier. Tallow counts as one feedstock, so live cattle (LE=F) and Darling (DAR) together stay under 35%.
-3. **At least 40% waste-based feedstocks** (UCO and animal fat), for the EU rules on biofuels (RED II).
-You can change the last two rules with the sliders in the app. The cap can't go below 25%: with 4 real feedstocks, a lower cap can't add up to 100%.
+1. **Full allocation**: Portfolio must sum to 100%, with no short selling.
+2. **Concentration limit**: No more than 35% in one feedstock, so the client is not too dependent on one supplier. Tallow counts as one feedstock, so live cattle (LE=F) and Darling (DAR) together stay under 35%.
+3. **Waste-related allocation**: At least 40% waste-based feedstocks (UCO and animal fat), for the EU rules on biofuels (RED II).
+
+The concentration and waste-related allocation limits can be adjusted using sliders in the application.
+
+With four modeled feedstock categories, the maximimum category weight cannot be set below 25% while maintaining full allocation.
  
 ## The feedstocks and their proxies
  
