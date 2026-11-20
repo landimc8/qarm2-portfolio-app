@@ -86,7 +86,7 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
  
-The app then opens in your browser.
+The app then opens in your browser
  
 ## Main files
  
