@@ -57,14 +57,17 @@ Most real feedstock prices are not free, so we use free Yahoo Finance prices tha
 | Rapeseed | ZS=F (US soybean futures) |
 | Used cooking oil (UCO) | HO=F (US diesel futures) |
 | Tallow (animal fat) | LE=F (live cattle futures) and DAR (Darling Ingredients) |
- 
+
 ## What the app shows
- 
-- **The efficient frontier**, with and without the client's rules.
-- **Our recommended mix** (minimum variance) and the Sharpe-equivalent mix for comparison.
-- **Global minimum variance formula** from the course (no rules, short selling allowed), compared with our mix.
-- **Risk contributions**: which feedstock brings the most risk.
-- **Cost-at-Risk**: how much the costs could go up in a bad month, in dollars.
+## Portfolio optimization
+- **The efficient frontier**: Comparison of portfolios with and without the client's allocation constraints.
+- **Minimum-variance portfolio**: The allocation that minimizes estimated financial portfolio volatility under the selected constraints.
+- **Maximum-Sharpe portfolio**: A financial risk-return benchmark.
+- **Global minimum variance formula**: Comparison with the analytical unconstrained solution discussed in class.
+- **Risk contributions**: Identification of the instruments contributing most to overall portfolio risk.
+
+##Risk analysis
+- **Proxy-based Cost-at-Risk**: how much the costs could go up in a bad month, in dollars.
 - **How much does our mix reduce cost swings?** Our mix compared with buying only one feedstock or an equal split.
 - **Why minimum variance, not Sharpe**: the client is a buyer, so stable costs matter more than "return".
 - **Stable costs or stable margin?** A second goal for a client that sells at diesel-linked prices (tracking error vs diesel, LN2). Fixed selling price: use our main mix. Selling price that follows diesel: use the stable-margin mix.
