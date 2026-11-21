@@ -537,7 +537,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "Price increase over a year: (1 + μ)^252 − 1",
         f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
         "Return per risk: μ / σ",
-        "Main risk source: RC*ᵢ,",
+        "Main risk source: RC*ᵢ,"
         "Waste share (RED2)",
     ]))
     st.caption(
@@ -781,7 +781,7 @@ with st.expander("Recommended data sources (next version of your tool)"):
         "Today the tool uses free proxies. With professional data, it would use **your real prices** "
         "and **your real rules** instead of our assumptions."
     )
-    st.dataframe(pd.DataFrame({
+    st.table(pd.DataFrame({
         "Source we recommend": [
             "Argus",
             "Argus",
@@ -794,7 +794,7 @@ with st.expander("Recommended data sources (next version of your tool)"):
             "Replaces our proxies (HO=F, LE=F, DAR, ZS=F), so most of the basis risk disappears",
             "Replaces diesel (HO=F) as the benchmark for the stable-margin mix",
             "Replaces our assumed 40% RED2 minimum with the real mandate level",
-            "With Argus prices, gives the hedge ratio (Lab 2) to lock your prices with futures",
+            "With Argus prices, gives the hedge ratio to lock your prices with futures",
             "Confirms which volumes count as waste-based for RED2",
             "Helps you decide when and how much to hedge (supply, demand, stocks)",
         ],
