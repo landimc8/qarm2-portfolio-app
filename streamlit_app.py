@@ -491,11 +491,12 @@ with st.expander("Basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F)"):
         st.pyplot(fig_b)
 
         st.caption(
-            "Our client buys in Rotterdam, but our proxy for used cooking oil is the New York "
-            "diesel price. Here we compare it with the real Rotterdam diesel price (ICE gasoil). "
-            "Most weeks, the two prices move together. But in a crisis, like 2022, the gap "
-            "between them can jump. That gap is our basis risk. Gasoil prices come from "
-            "Investing.com, converted from $ per tonne to $ per barrel."
+            "You buy in Rotterdam, but our proxy for used cooking oil is the New York diesel price. "
+            "Here we compare it with the Rotterdam diesel price (ICE gasoil). Most weeks, the two "
+            "prices move together (89%). But in a crisis, like 2022 or spring 2026, the gap between "
+            "them can jump. This checks the New York vs Rotterdam gap only: it does not show how "
+            "closely diesel follows your real UCO price, which only your own UCO prices can tell. "
+            "Gasoil prices come from Investing.com, converted from $ per tonne to $ per barrel."
         )
     except FileNotFoundError:
         st.info("Add the ICE gasoil CSV as data/gasoil_ice.csv to show this check.")
@@ -524,8 +525,8 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         ]
 
     st.markdown(
-        "Our client is a **buyer**: a higher 'return' means feedstock prices going up, "
-        "so higher costs. The goal is **stable costs**, which is what minimum variance gives."
+                        "You are a **buyer**: a higher 'return' means feedstock prices going up, "
+        "so higher costs. Your goal is **stable costs**, which is what minimum variance gives."
     )
     st.dataframe(pd.DataFrame({
         "Minimum variance (recommended)": _why_row(mv_pick),
@@ -536,7 +537,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "Price increase over a year: (1 + μ)^252 − 1",
         f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
         "Return per risk: μ / σ",
-        "Main risk source: RC*ᵢ (LN5)",
+        "Main risk source: RC*ᵢ,",
         "Waste share (RED2)",
     ]))
     st.caption(
@@ -548,7 +549,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
 
 # --- stable margin: minimize tracking error vs the selling price (LN2) -------
 
-with st.expander("Stable costs or stable margin? (tracking error vs diesel, LN2)"):
+with st.expander("Stable costs or stable margin? (tracking error vs diesel)"):
     from scipy.optimize import minimize as _minimize
     from constraints import build_all_constraints as _bac, get_bounds as _gb
 
@@ -575,11 +576,11 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel, LN2)
     def _margin_risk(x):
         return np.sqrt(_margin_var(x))
 
-    st.markdown(
-        "Our client sells biodiesel at a price linked to diesel, so its **margin** is roughly "
+        st.markdown(
+        "If you sell your biodiesel at a price linked to diesel, your **margin** is roughly "
         "*selling price change − feedstock cost change*. Minimizing the variance of the margin is "
-        "the same as minimizing the **tracking error** against a benchmark *b* = 100% diesel (LN2): "
-        "$\\min_x \\,(x-b)^\\top\\Sigma\\,(x-b)$, with the same three client rules."
+        "the same as minimizing the **tracking error** against a benchmark *b* = 100% diesel: "
+        "$\\min_x \\,(x-b)^\\top\\Sigma\\,(x-b)$, with the same three rules."
     )
     st.dataframe(pd.DataFrame({
         "Stable costs (our recommendation)": [f"{w:.1%}" for w in w_cost]
@@ -589,8 +590,10 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel, LN2)
     }, index=PORTFOLIO_TICKERS + ["Daily cost risk", "Daily margin risk", "Waste share (RED2)"]))
     st.caption(
         "The stable-margin mix buys more diesel-linked UCO and soybean oil, because their costs move with "
-        "the selling price. Its costs move more, but its margin moves less. Limit: the selling price "
-        "of European biodiesel follows Rotterdam gasoil; we use HO=F as a free proxy."
+        "the selling price. Its costs move more, but its margin moves less. Limit: here diesel (HO=F) is "
+        "both our UCO proxy and the selling price, so the gain looks larger than it really is. With real "
+        "prices (your own data box), the gain is usually smaller. European biodiesel follows Rotterdam "
+        "gasoil; we use HO=F as a free proxy."
     )
 
 
@@ -632,6 +635,8 @@ with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Eur
         "not price levels. A correlation of about 0.4 means US soybeans explain only a small "
         "part of European rapeseed moves (R² = corr² ≈ 0.2): the basis risk is large. "
         "Soybean oil (ZL=F) follows rapeseed a little better than soybeans. "
+        "Euronext rapeseed is the seed and you buy rapeseed oil, so a small seed-vs-oil gap remains. "
+        "For your rapeseed, we recommend hedging with the Euronext contract directly. "
         "Source: Euronext rapeseed futures (COMc1), Investing.com."
     )
 
@@ -656,8 +661,8 @@ with st.expander("How much does our mix reduce cost swings?"):
     for _label, _w in _options.items():
         _m = float((_monthly.values @ _w).std())             # typical monthly cost change
         _rows.append([_label, f"{np.sqrt(_w @ _cov @ _w):.2%}", f"{_m:.1%}", f"${procurement_budget * _m:,.0f}"])
-    _tab = pd.DataFrame(_rows, columns=["What the client buys", "Daily cost risk",
-                                        "Typical monthly cost change", "In money (monthly)"]).set_index("What the client buys")
+    _tab = pd.DataFrame(_rows, columns=["What you buy", "Daily cost risk",
+                                        "Typical monthly cost change", "In money (monthly)"]).set_index("What you buy")
     st.dataframe(_tab)
 
     _m_mix = float((_monthly.values @ _w_mix).std())
@@ -677,17 +682,17 @@ with st.expander("How much does our mix reduce cost swings?"):
 
 # --- profit-at-risk calculator: what a bad month does to the client's profit --
 
-with st.expander("Profit-at-Risk calculator: how much profit could the client lose?"):
+with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
     from scipy.optimize import minimize as _pminimize
     from constraints import build_all_constraints as _pbac, get_bounds as _pgb
 
     st.markdown(
-        "The client enters how it sells its biodiesel. The app shows its expected monthly profit "
+        "Enter how you sell your biodiesel. The app shows your expected monthly profit "
         "and how much of it could disappear in a bad month, with each mix."
     )
     _c1, _c2 = st.columns(2)
     with _c1:
-        _sales = st.radio("How does the client sell its biodiesel?",
+        _sales = st.radio("How does you sell your biodiesel?",
                           ["Fixed selling price", "Selling price follows diesel"], key="pc_sales")
         _price = st.number_input("Selling price ($ per tonne of biodiesel)", min_value=0.0,
                                  value=1500.0, step=50.0, key="pc_price")
@@ -749,7 +754,7 @@ with st.expander("Profit-at-Risk calculator: how much profit could the client lo
     }, index=["Fixed selling price", "Selling price follows diesel"]))
 
     st.markdown(
-        f"For a client whose {'selling price follows diesel' if _follows else 'selling price is fixed'}, "
+        f"Because your {'selling price follows diesel' if _follows else 'selling price is fixed'}, "
         f"the **{_best}** protects the profit best: "
         f"in a bad month, it could lose about **{_usd(_par_best)}** of its **{_usd(_profit)}** profit. "
         f"The other mix would put **{_usd(abs(_par_main - _par_margin))} more** at risk.".replace("$", "\\$")
@@ -761,9 +766,11 @@ with st.expander("Profit-at-Risk calculator: how much profit could the client lo
         st.warning("In a bad month, the profit could turn into a loss. The client may also need futures to lock prices.")
     st.caption(
         "Profit-at-Risk = √(dᵀΣd) × √days × z, where d = dollar exposure: + the diesel-linked part of sales "
-        "(only if the price follows diesel), − feedstock budget × mix weights. Same parametric formula as the Cost-at-Risk "
-        "(normal returns, not from the course). Selling price, tonnes and other costs are the client's inputs; "
-        "only the risks come from the model. The stable-margin mix uses diesel (HO=F) as a proxy for the selling price."
+        "(only if the price follows diesel), − feedstock budget × mix weights. Same parametric formula as the "
+        "Cost-at-Risk (normal returns, not from the course). Selling price, tonnes and other costs are your "
+        "inputs; only the risks come from the model. Two limits: the feedstock bill is the budget in the "
+        "sidebar, so keep it consistent with your tonnes; and diesel (HO=F) is both our UCO proxy and the "
+        "selling price, so the stable-margin gain looks larger than with real prices."
     )
 
 
