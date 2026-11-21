@@ -884,10 +884,19 @@ with st.expander("Your own data: the recommended mix on your real prices"):
                 "Money": [f"${procurement_budget * x:,.0f}" for x in _w],
                 "Our proxy mix (for comparison)": [f"{_proxy_share[c]:.1%}" for c in _feeds],
             }, index=_feeds))
-            c1, c2, c3 = st.columns(3)
+            # daily equivalent, so it compares with the main app (which uses daily prices)
+            _sig_day = _sig / np.sqrt(_gap)
+            _sig_proxy = float(min_variance_portfolio(constrained_frontier)["volatility"])
+            c1, c2, c3, c4 = st.columns(4)
             c1.metric("Waste share (RED2)", f"{sum(_w[i] for i in _widx):.1%}")
-            c2.metric("Risk per row of your data", f"{_sig:.2%}")
-            c3.metric("Cost-at-Risk (95%, 1 month)", f"${_car:,.0f}")
+            c2.metric("Risk per row of your data", f"{_sig:.2%}",
+                      help=f"One row of your file covers about {_gap:.0f} trading day(s).")
+            c3.metric("Expected daily cost volatility", f"{_sig_day:.2%}",
+                      delta=f"{(_sig_day - _sig_proxy) * 100:+.2f} pts vs proxy mix ({_sig_proxy:.2%})",
+                      delta_color="inverse",
+                      help=f"Risk per row ÷ √{_gap:.0f} trading days. Same unit as the main app’s "
+                           f"‘Expected daily cost volatility’.")
+            c4.metric("Cost-at-Risk (95%, 1 month)", f"${_car:,.0f}")
 
             if _has_sell:
                 # stable margin: minimise the variance of (your costs - your selling price)
