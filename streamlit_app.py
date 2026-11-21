@@ -87,40 +87,30 @@ st.markdown(
 with st.expander("A note on the data (basis risk)"):
     st.markdown(
         """
-        Public daily price data for UCO and tallow doesn't exist outside
-        paid industry services (Argus, Fastmarkets). This tool proxies
-        them with liquid, publicly available futures and equities instead:
+        Public daily prices for UCO and tallow are not free: Argus and
+        Fastmarkets sell them. So this tool uses free prices that move in
+        a similar way (proxies):
 
-        - **UCO** is proxied by **HO=F** (NY Harbor ULSD/diesel futures),
-          since UCO-based fuel competes directly with diesel.
-        - **Tallow** is proxied by **LE=F** (Live Cattle futures) and
-          **DAR** (Darling Ingredients equity), since tallow is a cattle
-          rendering byproduct and Darling is the largest global processor
-          of rendered fats into fuel.
-        - The second crop-based feedstock uses **ZS=F** (soybean futures)
-          rather than canola/rapeseed futures (RS=F) -- Yahoo Finance
-          returned "possibly delisted; no price data found" for RS=F on
-          every attempt, confirmed across repeated pulls rather than a
-          one-off network issue. This tracks with canola/rapeseed trading
-          on ICE rather than a CME Group exchange, where
-          Yahoo's futures coverage is noticeably thinner. ZS=F steps in as
-          a reliably available, still crop-based substitute. Note that ZS=F is the soybean *seed*, not an oil, so it carries two layers of basis risk: a different crop, and seed versus oil (the crush margin).
+        - **UCO → HO=F** (New York diesel futures), because UCO-based fuel
+          competes with diesel.
+        - **Tallow → LE=F** (live cattle futures) and **DAR** (Darling
+          Ingredients), because tallow comes from cattle and Darling is the
+          biggest processor of animal fats into fuel.
+        - **Rapeseed → ZS=F** (US soybean futures), because Yahoo Finance
+          has no canola/rapeseed price. ZS=F is a seed, not an oil, so it
+          adds two gaps: a different crop, and seed versus oil.
 
-        This is a deliberate modeling choice, not an oversight -- the gap
-        between a hedging proxy and the true underlying exposure is a
-        known, accepted limitation in real-world hedging called **basis
-        risk**. The optimizer below minimizes variance of the proxy
-        basket, so the client's real cost risk is likely higher than the app reports, because the proxies do not capture all of the real prices' moves. The basis-risk check at the bottom of the page measures this gap for UCO (New York diesel vs Rotterdam gasoil).
+        The gap between a proxy and your real price is called **basis
+        risk**. We measured it in the two checks at the bottom of the page:
+        **good for UCO** (correlation 0.89 with Rotterdam gasoil) and
+        **weak for rapeseed** (0.44 with Euronext rapeseed). Soybean oil
+        (ZL=F) and soybeans (ZS=F) also come from the same Chicago market,
+        so they move together more than real soybean oil and rapeseed oil
+        would: the correlation under the frontier chart shows how much.
 
-        **One limitation worth flagging directly:** ZL=F and ZS=F are
-        both part of the CBOT soybean complex, so the crop-based leg is
-        more correlated than a soybean-oil/rapeseed-oil pairing was
-        originally intended to be. The live correlation figure below the
-        frontier chart reports exactly how correlated the two actually
-        are on the current data -- there's no reliably sourced figure for
-        what a genuine soybean-oil/rapeseed-oil pair would score, so this
-        is reported on its own terms rather than framed as worse than
-        that pairing would be.
+        **To remove most of this gap, upload your real prices** (Argus or
+        your invoices) in the sidebar under **"Add your own data"**: the
+        tool then runs the same optimization on them.
         """
     )
 
