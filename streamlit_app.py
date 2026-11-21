@@ -201,9 +201,11 @@ with st.expander("Data provenance -- where this comes from, exactly"):
         All portfolio prices come from **Yahoo Finance**, pulled through the
         [`yfinance`](https://pypi.org/project/yfinance/) Python library --
         this mirrors Yahoo's own end-of-day data rather than a separate
-        paid vendor. The only exception is the Rotterdam gasoil price in the
-        basis-risk check at the bottom, which comes from Investing.com
-        (Yahoo does not carry it).
+        paid vendor. There are two exceptions, both used only in the
+        basis-risk checks at the bottom: the Rotterdam gasoil price and the
+        Euronext rapeseed price, which come from Investing.com (Yahoo does
+        not carry them). If you upload your own prices in the sidebar, they
+        are used only in the "Your own data" box.
 
         - **Price field:** `Close`, with `auto_adjust=True` -- Yahoo's
           *adjusted* close (splits/dividends folded in), not the raw print.
