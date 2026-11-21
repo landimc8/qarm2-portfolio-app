@@ -72,10 +72,15 @@ Some of the most useful data is not public, but you have it:
 - **Your sales contracts** (fixed price or diesel-linked): they tell us directly which mix fits you.
 - **Your volumes and yields** (tonnes of feedstock per tonne of fuel): they connect the budget to your tonnes.
 - **Your costs in euros**: they remove the dollar/euro gap.
+
+
 ## Data
  
-- Portfolio prices: **Yahoo Finance** (free), downloaded by the app.
-- Rotterdam gasoil and Euronext rapeseed: **Investing.com** CSV files in the `data` folder, used only for the checks.
+- **Yahoo Finance:** Historical financial market prices used in portfolio optimization.
+- **Investing.com:** Rotterdam gasoil and Euronext rapeseed CSV data used for proxy comparisons.
+
+The European reference datasets are stored in the `data/` directory.
+
 ## How to run it on your computer
  
 ```bash
