@@ -692,7 +692,7 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
     )
     _c1, _c2 = st.columns(2)
     with _c1:
-        _sales = st.radio("How does you sell your biodiesel?",
+        _sales = st.radio("How do you sell your biodiesel?",
                           ["Fixed selling price", "Selling price follows diesel"], key="pc_sales")
         _price = st.number_input("Selling price ($ per tonne of biodiesel)", min_value=0.0,
                                  value=1500.0, step=50.0, key="pc_price")
@@ -908,13 +908,16 @@ with st.expander("Your own data: the recommended mix on your real prices"):
                     return v @ _C @ v
                 _rm = _ominimize(_mvar, np.ones(_n) / _n, method="SLSQP", bounds=_bnds,
                                  constraints=_cons, options={"maxiter": 500, "ftol": 1e-12})
-                st.markdown("**Stable-margin mix on your real selling price** (tracking error, LN2):")
+                st.markdown("**Stable-margin mix on your real selling price** (tracking error):")
                 st.dataframe(pd.DataFrame({
                     "Stable-margin mix": [f"{x:.1%}" for x in _rm.x],
                     "Money": [f"${procurement_budget * x:,.0f}" for x in _rm.x],
                 }, index=_feeds))
-                st.caption(f"Margin risk per row: main mix {np.sqrt(_mvar(_w)):.2%}, "
-                           f"stable-margin mix {np.sqrt(_mvar(_rm.x)):.2%}.")
+                _mm, _ms = np.sqrt(_mvar(_w)), np.sqrt(_mvar(_rm.x))
+                st.caption(f"How much your margin moves per row: main mix {_mm:.2%}, stable-margin mix "
+                           f"{_ms:.2%}, that is {1 - _ms / _mm:.0%} calmer. A small gain means none of "
+                           f"your feedstocks follows your selling price closely: to protect your margin, "
+                           f"a futures hedge on the selling side works better.")
 
             st.caption("Same method and same rules as the main app (minimum variance, RED2 minimum, cap per "
                        "feedstock), but on your real prices, so there is no basis risk from proxies. "
