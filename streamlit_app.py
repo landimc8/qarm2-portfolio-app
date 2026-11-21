@@ -922,3 +922,68 @@ with st.expander("Your own data: the recommended mix on your real prices"):
             st.caption("Same method and same rules as the main app (minimum variance, RED2 minimum, cap per "
                        "feedstock), but on your real prices, so there is no basis risk from proxies. "
                        "Waste-based feedstocks: UCO and Tallow. Cost-at-Risk assumes normal returns.")
+
+
+# --- what if you change your rules? (sensitivity table) ----------------------
+
+with st.expander("What if you change your rules? (cap and waste minimum)"):
+    from scipy.optimize import minimize as _wminimize
+    from constraints import build_all_constraints as _wbac, get_bounds as _wgb
+
+    @st.cache_data(show_spinner="Testing other rules...")
+    def _whatif(cov, red, cap, n):
+        # the calmest mix for one set of rules (same rules as the main app)
+        res = _wminimize(lambda w: w @ cov @ w, np.ones(n) / n, method="SLSQP",
+                         bounds=_wgb(concentration_cap=cap, n_assets=n),
+                         constraints=_wbac(sustainability_min=red, concentration_cap=cap),
+                         options={"maxiter": 500, "ftol": 1e-12})
+        if not res.success:
+            return None
+        w = res.x
+        return float(np.sqrt(w @ cov @ w)), float(sustainability_share(w)), w
+
+    _wcov = np.asarray(cov_matrix)
+    _wn = len(PORTFOLIO_TICKERS)
+    _which = st.radio("Which rule do you want to test?",
+                      ["The cap per feedstock", "The waste minimum (RED2)"], horizontal=True, key="wi_rule")
+
+    if _which == "The cap per feedstock":
+        _vals = [0.25, 0.30, 0.35, 0.40, 0.50, 1.00]
+        _runs = [(sustainability_min, v) for v in _vals]
+        _labels = ["No cap" if v == 1.0 else f"{v:.0%}" for v in _vals]
+        _now = concentration_cap
+        st.markdown(f"Your waste minimum stays at **{sustainability_min:.0%}**. Only the cap changes.")
+    else:
+        _vals = [0.0, 0.25, 0.40, 0.50, 0.60, 0.70, 0.75]
+        _runs = [(v, concentration_cap) for v in _vals]
+        _labels = [f"{v:.0%}" for v in _vals]
+        _now = sustainability_min
+        st.markdown(f"Your cap stays at **{concentration_cap:.0%}**. Only the waste minimum changes.")
+
+    _base = _whatif(_wcov, sustainability_min, concentration_cap, _wn)
+    _rows = []
+    for (_red, _cap), _lab, _v in zip(_runs, _labels, _vals):
+        _out = _whatif(_wcov, _red, _cap, _wn)
+        _mark = "  ← your setting" if abs(_v - _now) < 1e-9 else ""
+        if _out is None:
+            _rows.append([_lab + _mark, "no feasible mix", "—", "—", "—", "Your rules can’t all hold at once"])
+            continue
+        _vol, _waste, _w = _out
+        _car = procurement_budget * _vol * np.sqrt(21) * 1.645
+        _diff = "—" if (_mark or _base is None) else f"{(_vol - _base[0]) * 100:+.2f} pts"
+        _biggest = PORTFOLIO_TICKERS[int(np.argmax(_w))]
+        _rows.append([_lab + _mark, f"{_vol:.2%}", _diff, f"${_car:,.0f}", f"{_waste:.0%}",
+                      f"{_biggest} {_w.max():.0%}"])
+
+    st.table(pd.DataFrame(_rows, columns=[
+        "Setting", "Daily cost volatility", "vs your setting", "Cost-at-Risk (95%, 1 month)",
+        "Waste share", "Biggest feedstock"]).set_index("Setting"))
+
+    if _which == "The cap per feedstock":
+        st.caption("A looser cap lowers your risk, but you depend more on one feedstock (see 'Biggest feedstock'). "
+                   "A tighter cap spreads your supply, but your costs move more.")
+    else:
+        st.caption("A higher waste minimum is greener. It costs little while the calmest mix already has that much "
+                   "waste, then more and more. Above 2 × the cap (UCO + tallow), no mix is possible.")
+    st.caption("Each row is the calmest mix for those rules, on the same data as the main app. "
+               "Cost-at-Risk uses your budget in the sidebar, 95% and 21 days.")
