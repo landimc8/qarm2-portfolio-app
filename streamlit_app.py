@@ -770,3 +770,42 @@ with st.expander("Profit-at-Risk calculator: how much profit could the client lo
         "(normal returns, not from the course). Selling price, tonnes and other costs are the client's inputs; "
         "only the risks come from the model. The stable-margin mix uses diesel (HO=F) as a proxy for the selling price."
     )
+
+
+# --- recommended data sources for the next version ---------------------------
+
+with st.expander("Recommended data sources (next version of your tool)"):
+    st.markdown(
+        "Today the tool uses free proxies. With professional data, it would use **your real prices** "
+        "and **your real rules** instead of our assumptions."
+    )
+    st.dataframe(pd.DataFrame({
+        "Source we recommend": [
+            "Argus",
+            "Argus",
+            "SquareCommodities (regulatory data)",
+            "ICE (gasoil), CME (soybean oil), Euronext (rapeseed)",
+            "Nabisy",
+            "EIA, IEA, JODI (oil and diesel), USDA (oilseeds)",
+        ],
+        "What it replaces or adds in the tool": [
+            "Replaces our proxies (HO=F, LE=F, DAR, ZS=F), so most of the basis risk disappears",
+            "Replaces diesel (HO=F) as the benchmark for the stable-margin mix",
+            "Replaces our assumed 40% RED2 minimum with the real mandate level",
+            "With Argus prices, gives the hedge ratio (Lab 2) to lock your prices with futures",
+            "Confirms which volumes count as waste-based for RED2",
+            "Helps you decide when and how much to hedge (supply, demand, stocks)",
+        ],
+    }, index=[
+        "Your feedstock prices (UCO, tallow, rapeseed oil, soybean oil)",
+        "Your selling price (FAME, HVO)",
+        "The real mandate levels",
+        "Futures for the hedge",
+        "Sustainability proofs",
+        "Market fundamentals",
+    ]))
+    st.caption(
+        "Prices (Argus and the exchanges) go into the model. Fundamentals (EIA, IEA, JODI, USDA) and "
+        "regulatory data (SquareCommodities, Nabisy) set the rules and explain why prices move. "
+        "Your own purchase prices, supplier quotes and sales contracts would improve the tool even more."
+    )
