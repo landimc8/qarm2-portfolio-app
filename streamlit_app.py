@@ -73,14 +73,14 @@ def render_ticker_key():
 st.title("Rotterdam Biofuels SA -- Feedstock Cost-Risk Hedging")
 st.markdown(
     """
-    Rotterdam Biofuels SA buys a basket of feedstocks -- used cooking oil
-    (UCO), tallow, soybean oil, and rapeseed oil -- and refines them into
-    biodiesel and renewable diesel (HVO). Feedstock costs swing significantly
-    month to month, squeezing margins. This tool builds a feedstock
-    allocation that minimizes cost volatility while respecting three
-    business realities: the EU RED2 sustainability minimum for
-    waste-based feedstocks, a concentration cap so no single feedstock
-    dominates supply, and the procurement budget.
+    You buy four feedstocks (used cooking oil, tallow, soybean oil and rapeseed oil) 
+    and turn them into biodiesel and renewable diesel (HVO). Their prices move a lot 
+    from month to month, and as a buyer, rising prices mean higher costs and a smaller 
+    margin. This tool finds the mix of feedstocks whose total cost moves the least, 
+    while following your three rules: the EU RED2 minimum for waste-based feedstocks, 
+    a cap so no single feedstock dominates your supply, and your procurement budget. 
+    It also shows a stable-margin mix if your selling price follows diesel, 
+    how much profit a bad month could take, and it can run on your own prices.
     """
 )
 
@@ -235,8 +235,9 @@ with st.expander("Crack spread diagnostic (HO=F x 42 minus CL=F, $/bbl)"):
         "This chart shows the gap between the diesel price and the crude oil price: "
         "how much a refinery earns per barrel. We use diesel (HO=F) as the proxy for "
         "used cooking oil, because fuel made from UCO is sold in the same market as diesel. "
-        "When this gap is large, diesel is expensive, and used cooking oil usually gets "
-        "more expensive too. **Crude oil (CL=F) is only used for this chart. It is not "
+        "When this gap is large, diesel is expensive, and used cooking oil often gets "
+        "more expensive too. For you, this matters because your biodiesel selling price "
+        "often follows diesel. **Crude oil (CL=F) is only used for this chart. It is not "
         "part of the portfolio.**"
     )
     cleaned_for_spread = clean_prices(raw_prices)
@@ -659,7 +660,7 @@ with st.expander("How much does our mix reduce cost swings?"):
 
     _m_mix = float((_monthly.values @ _w_mix).std())
     _m_eq = float((_monthly.values @ _options["Equal split (20% each)"]).std())
-    _m_max = max(float(_monthly[t].std()) for t in PORTFOLIO_TICKERS)
+    _m_max = max(float(_monthly[t].values.std()) for t in PORTFOLIO_TICKERS)
     st.markdown(
         f"Our mix moves **{_m_max / _m_mix:.1f} times less** than the riskiest single feedstock, "
         f"and **{1 - _m_mix / _m_eq:.0%} less** than a simple equal split."
