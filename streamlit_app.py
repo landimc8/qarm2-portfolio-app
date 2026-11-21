@@ -537,7 +537,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "Price increase over a year: (1 + μ)^252 − 1",
         f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
         "Return per risk: μ / σ",
-        "Main risk source: RC*ᵢ,"
+        "Main risk source: RC*ᵢ",
         "Waste share (RED2)",
     ]))
     st.caption(
