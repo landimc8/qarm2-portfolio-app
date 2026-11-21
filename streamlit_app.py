@@ -809,3 +809,102 @@ with st.expander("Recommended data sources (next version of your tool)"):
         "regulatory data (SquareCommodities, Nabisy) set the rules and explain why prices move. "
         "Your own purchase prices, supplier quotes and sales contracts would improve the tool even more."
     )
+
+
+# --- add your own data: run the model on the client's real prices ------------
+
+with st.sidebar:
+    st.markdown("---")
+    st.subheader("Add your own data (optional)")
+    st.caption("Replace our free proxies with your real prices: Argus prices or your own invoices.")
+    _own_template = (
+        "Date,UCO,Tallow,Rapeseed oil,Soybean oil,Selling price\n"
+        "2026-01-05,1100,1050,1020,1000,1500\n"
+        "2026-01-06,1105,1048,1025,1004,1508\n"
+    )
+    st.download_button("Download the template (CSV)", _own_template,
+                       file_name="your_prices_template.csv", mime="text/csv")
+    _own_file = st.file_uploader("Upload your feedstock prices (CSV)", type="csv", key="own_prices",
+                                 help="One column per feedstock (UCO, Tallow, Rapeseed oil, Soybean oil), "
+                                      "same units over time. Optional: a 'Selling price' column (Argus FAME/HVO) "
+                                      "for the stable-margin mix.")
+    st.caption("Real mandate level: set the RED2 slider above to the level from SquareCommodities’ "
+               "regulatory data.")
+
+with st.expander("Your own data: the recommended mix on your real prices"):
+    if _own_file is None:
+        st.info("Upload your prices in the sidebar (‘Add your own data’). The tool will then run the same "
+                "optimization, with the same rules, on your real prices instead of our proxies.")
+    else:
+        from scipy.optimize import minimize as _ominimize
+        try:
+            _od = pd.read_csv(_own_file)
+            _od["Date"] = pd.to_datetime(_od["Date"])
+            _od = _od.set_index("Date").sort_index()
+        except Exception as _e:
+            st.error(f"Could not read the file. Use the template: a 'Date' column and one column per price. ({_e})")
+            st.stop()
+
+        _feeds = [c for c in ["UCO", "Tallow", "Rapeseed oil", "Soybean oil"] if c in _od.columns]
+        _waste = [c for c in _feeds if c in ("UCO", "Tallow")]
+        _has_sell = "Selling price" in _od.columns
+        _cols = _feeds + (["Selling price"] if _has_sell else [])
+        _r = _od[_cols].apply(pd.to_numeric, errors="coerce").dropna().pct_change().dropna()
+
+        if len(_feeds) < 2 or len(_r) < 20:
+            st.error("We need at least 2 feedstock columns and about 20 dates of prices.")
+        elif concentration_cap * len(_feeds) < 1 or concentration_cap * len(_waste) < sustainability_min:
+            st.error("With these columns, your rules can’t all hold at once: lower the RED2 minimum or raise the cap.")
+        else:
+            _n = len(_feeds)
+            _S = _r[_feeds].cov().values
+            _widx = [_feeds.index(c) for c in _waste]
+            _cons = [{"type": "eq", "fun": lambda w: w.sum() - 1},
+                     {"type": "ineq", "fun": lambda w: sum(w[i] for i in _widx) - sustainability_min}]
+            _bnds = [(0.0, concentration_cap)] * _n
+            _res = _ominimize(lambda w: w @ _S @ w, np.ones(_n) / _n, method="SLSQP",
+                              bounds=_bnds, constraints=_cons, options={"maxiter": 500, "ftol": 1e-12})
+            _w = _res.x
+
+            # how many trading days one row of your data covers (daily, weekly or monthly files)
+            _gap = max(float(pd.Series(_od.index).diff().dt.days.median()) * 5 / 7, 1.0)
+            _per_month = np.sqrt(21 / _gap)
+            _sig = float(np.sqrt(_w @ _S @ _w))
+            _car = procurement_budget * _sig * _per_month * 1.645
+
+            # our proxy mix, regrouped by real feedstock, for comparison
+            _wp = dict(zip(PORTFOLIO_TICKERS, np.asarray(min_variance_portfolio(constrained_frontier)["weights"])))
+            _proxy_share = {"UCO": _wp.get("HO=F", 0), "Tallow": _wp.get("LE=F", 0) + _wp.get("DAR", 0),
+                            "Rapeseed oil": _wp.get("ZS=F", 0), "Soybean oil": _wp.get("ZL=F", 0)}
+
+            st.markdown(f"Using **{len(_r)} price changes** from your file "
+                        f"({_r.index.min():%d %b %Y} to {_r.index.max():%d %b %Y}).")
+            st.dataframe(pd.DataFrame({
+                "Mix on your real prices": [f"{x:.1%}" for x in _w],
+                "Money": [f"${procurement_budget * x:,.0f}" for x in _w],
+                "Our proxy mix (for comparison)": [f"{_proxy_share[c]:.1%}" for c in _feeds],
+            }, index=_feeds))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Waste share (RED2)", f"{sum(_w[i] for i in _widx):.1%}")
+            c2.metric("Risk per row of your data", f"{_sig:.2%}")
+            c3.metric("Cost-at-Risk (95%, 1 month)", f"${_car:,.0f}")
+
+            if _has_sell:
+                # stable margin: minimise the variance of (your costs - your selling price)
+                _C = _r[_feeds + ["Selling price"]].cov().values
+                def _mvar(w):
+                    v = np.append(w, -1.0)
+                    return v @ _C @ v
+                _rm = _ominimize(_mvar, np.ones(_n) / _n, method="SLSQP", bounds=_bnds,
+                                 constraints=_cons, options={"maxiter": 500, "ftol": 1e-12})
+                st.markdown("**Stable-margin mix on your real selling price** (tracking error, LN2):")
+                st.dataframe(pd.DataFrame({
+                    "Stable-margin mix": [f"{x:.1%}" for x in _rm.x],
+                    "Money": [f"${procurement_budget * x:,.0f}" for x in _rm.x],
+                }, index=_feeds))
+                st.caption(f"Margin risk per row: main mix {np.sqrt(_mvar(_w)):.2%}, "
+                           f"stable-margin mix {np.sqrt(_mvar(_rm.x)):.2%}.")
+
+            st.caption("Same method and same rules as the main app (minimum variance, RED2 minimum, cap per "
+                       "feedstock), but on your real prices, so there is no basis risk from proxies. "
+                       "Waste-based feedstocks: UCO and Tallow. Cost-at-Risk assumes normal returns.")
