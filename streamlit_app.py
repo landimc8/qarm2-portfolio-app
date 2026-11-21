@@ -540,10 +540,15 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "Main risk source: RC*ᵢ",
         "Waste share (RED2)",
     ]))
+    _car_mv = procurement_budget * mv_pick["volatility"] * np.sqrt(horizon) * z_val
     st.caption(
-        "Minimum variance always has the lowest risk by definition. We recommend it because "
-        "stable costs are the right goal for a buyer. Cost-at-Risk is a standard parametric "
-        "VaR (not from the course)."
+        f"**What is the Cost-at-Risk?** In a bad month (about 1 month in 20), your feedstock bill "
+        f"could rise by about \\${_car_mv:,.0f} with our mix. In the other 19 months, it rises by "
+        f"less, or falls. Formula: budget × daily risk × √{horizon} days × {z_val}. We recommend "
+        f"you follow this number every month: it shows your risk in money, so you can decide how "
+        f"much to hedge. It assumes normal price moves, so real crises like 2022 can be worse. "
+        f"Minimum variance always has the lowest risk by definition. We recommend it because "
+        f"stable costs are the right goal for a buyer."
     )
 
 
@@ -971,9 +976,16 @@ with st.expander("What if you change your rules? (cap and waste minimum)"):
         _vol, _waste, _w = _out
         _car = procurement_budget * _vol * np.sqrt(21) * 1.645
         _diff = "—" if (_mark or _base is None) else f"{(_vol - _base[0]) * 100:+.2f} pts"
-        _biggest = PORTFOLIO_TICKERS[int(np.argmax(_w))]
+        _real = {"Soybean oil": _w[PORTFOLIO_TICKERS.index("ZL=F")],
+                 "Rapeseed (soybeans)": _w[PORTFOLIO_TICKERS.index("ZS=F")],
+                 "UCO (diesel)": _w[PORTFOLIO_TICKERS.index("HO=F")],
+                 "Tallow (cattle + Darling)": _w[PORTFOLIO_TICKERS.index("LE=F")]
+                                              + _w[PORTFOLIO_TICKERS.index("DAR")]}
+        _top = max(_real.values())
+        _biggest = (f"{_top:.0%} each" if max(_real.values()) - min(_real.values()) < 0.005
+                    else f"{max(_real, key=_real.get)} {_top:.0%}")
         _rows.append([_lab + _mark, f"{_vol:.2%}", _diff, f"${_car:,.0f}", f"{_waste:.0%}",
-                      f"{_biggest} {_w.max():.0%}"])
+                      _biggest])
 
     st.table(pd.DataFrame(_rows, columns=[
         "Setting", "Daily cost volatility", "vs your setting", "Cost-at-Risk (95%, 1 month)",
