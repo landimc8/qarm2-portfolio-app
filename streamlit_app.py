@@ -440,7 +440,7 @@ with st.expander("Compare: global minimum variance (no rules) vs our recommended
     vol_grey = grey_mv["volatility"]
 
     st.markdown(
-        "Global minimum variance from LN1: "
+        "Global minimum variance: "
         "$x_{gmv} = \\Sigma^{-1}\\mathbf{1} / \\mathbf{1}^\\top\\Sigma^{-1}\\mathbf{1}$ "
         "(only the budget rule, short selling allowed)."
     )
@@ -450,8 +450,10 @@ with st.expander("Compare: global minimum variance (no rules) vs our recommended
         "Our recommended mix (+ RED2 + cap)": [f"{w:.1%}" for w in weights] + [f"{recommended['volatility']:.2%}"],
     }, index=PORTFOLIO_TICKERS + ["Daily risk"]))
     st.caption(
-        "The analytical solution has no negative weights on our data, so it matches the grey line's safest point (small differences come from the 50-point grid). Our mix is riskier because the "
-        "35% cap limits live cattle: that is the cost of the client's rules."
+        "The analytical solution has no negative weights on our data, so it matches the grey line's "
+        "safest point (small differences come from the 50-point grid). It puts about two-thirds of the "
+        "money in tallow (live cattle + Darling). Your 35% cap allows only 35%, so our mix is riskier: "
+        "that is the cost of your rules."
     )
 
 
