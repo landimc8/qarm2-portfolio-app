@@ -39,7 +39,9 @@ You can change the last two rules with the sliders. The cap can't go below 25%: 
 3. Check the **risk contributions**: which feedstock brings the most risk.
 4. Open **"Stable costs or stable margin?"** if your selling price follows diesel.
 5. Use the **Profit-at-Risk calculator**: enter your selling price, tonnes and other costs to see how much profit a bad month could take.
-6. Re-run the tool **every month**: it downloads new prices.
+6. Open **"What if you change your rules?"** to see how your risk changes if you loosen or tighten the cap or the waste minimum.
+7. Upload **your own prices** in the sidebar ("Add your own data") to run the same optimization on your real prices.
+8. Re-run the tool **every month**: it downloads new prices.
 ## Your feedstocks and our proxies
  
 Your real feedstock prices are not free (companies like Argus and Fastmarkets sell them), so we use free Yahoo Finance prices that move in a similar way:
@@ -60,9 +62,12 @@ Your real feedstock prices are not free (companies like Argus and Fastmarkets se
 - **Cost-at-Risk**: how much your costs could go up in a bad month, in dollars.
 - **Why minimum variance, not Sharpe**: you are a buyer, so a higher "return" means higher costs.
 - **How much does our mix reduce cost swings?** Our mix compared with buying only one feedstock or an equal split.
-- **Stable costs or stable margin?** Fixed selling price: use our main mix. Selling price that follows diesel: use the stable-margin mix (tracking error vs diesel, LN2).
+- **Stable costs or stable margin?** Fixed selling price: use our main mix. Selling price that follows diesel: use the stable-margin mix (tracking error vs diesel).
 - **Profit-at-Risk calculator**: your expected monthly profit, and how much of it a bad month could take with each mix.
 - **Two basis-risk checks**: how well our proxies follow the real European prices.
+- **What if you change your rules?** Your daily risk, Cost-at-Risk and biggest feedstock for other caps and waste minimums.
+- **Your own data**: upload your real prices (Argus or your invoices) and get the recommended mix and the stable-margin mix on them.
+- **Recommended data sources** for the next version of the tool.
 - **The crack spread**: the difference between diesel and crude oil prices.
 ## Better with your own data
  
@@ -72,6 +77,8 @@ Some of the most useful data is not public, but you have it:
 - **Your sales contracts** (fixed price or diesel-linked): they tell us directly which mix fits you.
 - **Your volumes and yields** (tonnes of feedstock per tonne of fuel): they connect the budget to your tonnes.
 - **Your costs in euros**: they remove the dollar/euro gap.
+You can already upload your real prices in the sidebar ("Add your own data"): download the template, fill it in, and upload it.
+ 
 ## Recommended data sources (next version)
  
 | What it improves | Source we recommend | What it replaces or adds |
@@ -79,7 +86,7 @@ Some of the most useful data is not public, but you have it:
 | Your real feedstock prices (UCO, tallow, rapeseed oil, soybean oil) | **Argus** | Replaces our proxies, so most of the basis risk disappears |
 | Your selling price (FAME, HVO) | **Argus** | Replaces diesel (HO=F) as the benchmark for the stable-margin mix |
 | The real mandate levels | **SquareCommodities** (regulatory data) | Replaces our assumed 40% RED2 minimum |
-| Futures for the hedge | **ICE** (gasoil), **CME** (soybean oil), **Euronext** (rapeseed) | With Argus prices, gives the hedge ratio (Lab 2) to lock your prices |
+| Futures for the hedge | **ICE** (gasoil), **CME** (soybean oil), **Euronext** (rapeseed) | With Argus prices, gives the hedge ratio to lock your prices |
 | Sustainability proofs | **Nabisy** | Confirms which volumes count as waste-based for RED2 |
 | Market fundamentals | **EIA, IEA, JODI** (oil and diesel), **USDA** (oilseeds) | Helps you decide when and how much to hedge |
  
@@ -89,6 +96,7 @@ Prices (Argus and the exchanges) go into the model. Fundamentals (EIA, IEA, JODI
  
 - Portfolio prices: **Yahoo Finance** (free), downloaded by the app.
 - Rotterdam gasoil and Euronext rapeseed: **Investing.com** CSV files in the `data` folder, used only for the checks.
+- Your own prices, if you upload them, are used only in the "Your own data" box and are not saved.
 ## How to run it on your computer
  
 ```bash
@@ -114,4 +122,5 @@ The app then opens in your browser.
 - **The mix reduces how much your costs move, but it does not lock prices.** To fix a price, you would also need futures contracts.
 - **Prices are in US dollars**, but you pay in euros.
 - **The mix is based on past data**, and it is tested on the same data. Re-run it every month; a backtest on newer data would make the test stronger.
+- **With our proxies, the stable-margin mix looks better than it is**, because diesel (HO=F) is both our UCO proxy and the selling price. With real prices, the gain is usually small; a futures hedge on the selling side protects the margin better.
 - **The tool measures risk; it does not forecast prices.**
