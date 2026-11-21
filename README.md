@@ -64,6 +64,7 @@ Your real feedstock prices are not free (companies like Argus and Fastmarkets se
 - **Profit-at-Risk calculator**: your expected monthly profit, and how much of it a bad month could take with each mix.
 - **Two basis-risk checks**: how well our proxies follow the real European prices.
 - **The crack spread**: the difference between diesel and crude oil prices.
+  
 ## Better with your own data
  
 Some of the most useful data is not public, but you have it:
@@ -101,9 +102,22 @@ The app then opens in your browser.
 | `data/` | The gasoil and rapeseed files for the checks |
  
 ## Before you decide: limits
+
+**1. Financial proxies versus physical feedstock prices**
+
+The portfolio is optimized using returns on financial market instruments, not directly observed procurement prices for all physical feedstocks.
  
-- **Proxies are not your real prices.** Rapeseed is the weakest one, so you should hedge it with Euronext futures.
-- **The mix reduces how much your costs move, but it does not lock prices.** To fix a price, you would also need futures contracts.
-- **Prices are in US dollars**, but you pay in euros.
+**2. Hedging effectiveness**
+
+The application does not directly establish how profits and losses on financial positions offset changes in physical procurement costs. A complete hedging strategy would require modeling those exposures together.
+
+**3. Currency exposure**
+
+Financial prices are expressed in US dollars, whereas the fictional client operates in euros. Exchange-rate movements introduce an additional source of risk.
+
+**4. Basis risk**
+
+Some instruments may not track their intended feedstocks closely. The soybean futures proxy for European rapeseed is a particularly important limitation.
+
 - **The mix is based on past data**, and it is tested on the same data. Re-run it every month; a backtest on newer data would make the test stronger.
 - **The tool measures risk; it does not forecast prices.**
