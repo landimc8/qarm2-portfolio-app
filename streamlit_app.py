@@ -789,11 +789,15 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
         f"in a bad month, it could lose about **{_usd(_par_best)}** of its **{_usd(_profit)}** profit. "
         f"The other mix would put **{_usd(abs(_par_main - _par_margin))} more** at risk.".replace("$", "\\$")
     )
+    if _follows and _par_margin < _par_main:
+        st.info("On our free data, the stable-margin mix looks better here, but the gain is overstated: diesel "
+                "(HO=F) is both our UCO proxy and your selling price. Our recommendation stays the stable-cost "
+                "mix, plus a gasoil futures hedge on your selling price. Check the gain on your own prices first.")
     if _profit < 0:
-        st.error("With these inputs the client loses money even in a normal month: sales are lower than "
+        st.error("With these inputs you lose money even in a normal month: sales are lower than "
                  "feedstock + other costs. Check the selling price, tonnes and the budget in the sidebar.")
     elif _profit - _par_best < 0:
-        st.warning("In a bad month, the profit could turn into a loss. The client may also need futures to lock prices.")
+        st.warning("In a bad month, the profit could turn into a loss. You may also need futures to lock your prices.")
     st.caption(
         "Profit-at-Risk = √(dᵀΣd) × √days × z, where d = dollar exposure: + the diesel-linked part of sales "
         "(only if the price follows diesel), − feedstock budget × mix weights. Same parametric formula as the "
