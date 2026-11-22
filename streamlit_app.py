@@ -367,7 +367,7 @@ with col1:
     st.pyplot(fig2)
 
 with col2:
-    st.metric("Expected daily cost volatility", f"{recommended['volatility']:.4%}")
+    st.metric("Expected daily cost volatility", f"{recommended['volatility']:.2%}")
     st.metric("Expected daily price change", f"{recommended['return']:.4%}")
 
     sustainability_achieved = sustainability_share(weights)
@@ -388,7 +388,10 @@ with col2:
         st.metric("Return-per-risk (Sharpe-equivalent)", f"{recommended['sharpe_equivalent']:.4f}")
 
     st.caption(f"At a ${procurement_budget:,.0f} budget:")
-    st.write({t: f"${w * procurement_budget:,.0f}" for t, w in zip(PORTFOLIO_TICKERS, weights)})
+    st.dataframe(pd.DataFrame({
+        "Share": [f"{w:.1%}" for w in weights],
+        "Money": [f"${w * procurement_budget:,.0f}" for w in weights],
+    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS]))
 
 
 # --- risk budgeting ----------------------------------------------------
