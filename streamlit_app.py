@@ -526,7 +526,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
             f"{(1 + p['return']) ** 252 - 1:+.1%}",
             f"${procurement_budget * p['volatility'] * np.sqrt(horizon) * z_val:,.0f}",
             f"{p['return'] / p['volatility']:.3f}",
-            f"{PORTFOLIO_TICKERS[top]} ({rc_p[top]:.0%})",
+            f"{TICKER_LABELS[PORTFOLIO_TICKERS[top]]} ({rc_p[top]:.0%})",
             f"{sustainability_share(p['weights']):.0%}",
         ]
 
@@ -542,7 +542,7 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         "Daily 'return' = price increase: μ(x) = xᵀμ",
         "Price increase over a year: (1 + μ)^252 − 1",
         f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
-        "Return per risk: μ / σ",
+        "Price increase per risk: μ / σ (lower is better for you)",
         "Main risk source: RC*ᵢ",
         "Waste share (RED2)",
     ]))
@@ -553,8 +553,11 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         f"less, or falls. Formula: budget × daily risk × √{horizon} days × {z_val}. We recommend "
         f"you follow this number every month: it shows your risk in money, so you can decide how "
         f"much to hedge. It assumes normal price moves, so real crises like 2022 can be worse. "
-        f"Minimum variance always has the lowest risk by definition. We recommend it because "
-        f"stable costs are the right goal for a buyer."
+        f"Minimum variance always has the lowest risk by definition. The Sharpe pick is worse for you "
+        f"twice: your costs move more ({sr_pick['volatility']:.2%} vs {mv_pick['volatility']:.2%} a day), "
+        f"and it picks the feedstocks whose prices rose fastest in the past "
+        f"({(1 + sr_pick['return']) ** 252 - 1:+.1%} a year vs {(1 + mv_pick['return']) ** 252 - 1:+.1%}). "
+        f"That is why we recommend minimum variance: stable costs are the right goal for a buyer."
     )
 
 
