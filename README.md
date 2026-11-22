@@ -21,9 +21,19 @@ Our goal is stable costs. In finance, "stable" is measured by volatility. Our "r
 | Stable feedstock costs | A minimum-variance buying plan |
 | Keep your RED2 benefit | At least 40% waste feedstock, checked live (PASS/FAIL) |
 | Don't depend on one supplier | At most 35% per feedstock, tallow counted once |
-| Know your risk in money | Cost-at-Risk and a Profit-at-Risk calculator |
-| Your selling price follows diesel | A stable-margin mix |
+| Know your risk in money | Cost-at-Risk and a Profit-at-Risk calculator, with your break-even price |
+| Lock your margin | A hedging plan: futures for crop oils, forward contracts for UCO and tallow |
+| Your selling price follows diesel | Our mix + a gasoil futures hedge (the stable-margin mix is an option to test) |
 | Trust the data | Basis-risk checks on diesel and rapeseed |
+ 
+## Our recommendation in short
+ 
+1. **Buy this mix every month** (with a $10M budget, about 10,000 t): 35% rapeseed oil, 35% tallow, 21% soybean oil and 9% UCO. Waste share 44%, no feedstock above 35%.
+2. **Follow your Cost-at-Risk every month**: about $722,000 in a bad month (1 month in 20).
+3. **Lock your margin with a hedge**: 100% of your crop oils with futures (about 77 soybean oil and 168 rapeseed contracts a month) and 50% of your UCO and tallow with fixed-price supplier contracts. Your bad-month risk falls from about $722,000 to about $163,000.
+4. **If your selling price follows diesel**, keep the same mix and also sell ICE gasoil futures for your selling price.
+5. **Update the mix every quarter**, ideally with your own prices.
+The exact numbers change a little when new prices are downloaded.
  
 ## Your three rules
  
@@ -38,10 +48,11 @@ You can change the last two rules with the sliders. The cap can't go below 25%: 
 2. Read **our recommended mix** in "Recommended allocation": how to split your budget each month. This is your buying plan.
 3. Check the **risk contributions**: which feedstock brings the most risk.
 4. Open **"Stable costs or stable margin?"** if your selling price follows diesel.
-5. Use the **Profit-at-Risk calculator**: enter your selling price, tonnes and other costs to see how much profit a bad month could take.
-6. Open **"What if you change your rules?"** to see how your risk changes if you loosen or tighten the cap or the waste minimum.
-7. Upload **your own prices** in the sidebar ("Add your own data") to run the same optimization on your real prices.
-8. Re-run the tool **every month**: it downloads new prices.
+5. Use the **Profit-at-Risk calculator**: enter your selling price, tonnes and other costs to see your profit, your break-even price, and how much profit a bad month could take. The defaults ($1,180 per tonne, $100 per tonne of other costs) are close to today's market.
+6. Open **"Hedging: lock your margin"** and click **"Use our recommended hedge"** to see how much risk a hedge removes, how many futures contracts to buy and how many tonnes stay at market price.
+7. Open **"What if you change your rules?"** to see how your risk changes if you loosen or tighten the cap or the waste minimum.
+8. Upload **your own prices** in the sidebar ("Add your own data") to run the same optimization on your real prices.
+9. Re-run the tool **every month**: it downloads new prices.
 ## Your feedstocks and our proxies
  
 Your real feedstock prices are not free (companies like Argus and Fastmarkets sell them), so we use free Yahoo Finance prices that move in a similar way:
@@ -62,8 +73,9 @@ Your real feedstock prices are not free (companies like Argus and Fastmarkets se
 - **Cost-at-Risk**: how much your costs could go up in a bad month, in dollars.
 - **Why minimum variance, not Sharpe**: you are a buyer, so a higher "return" means higher costs.
 - **How much does our mix reduce cost swings?** Our mix compared with buying only one feedstock or an equal split.
-- **Stable costs or stable margin?** Fixed selling price: use our main mix. Selling price that follows diesel: use the stable-margin mix (tracking error vs diesel).
-- **Profit-at-Risk calculator**: your expected monthly profit, and how much of it a bad month could take with each mix.
+- **Stable costs or stable margin?** The stable-margin mix (tracking error vs diesel) makes your margin calmer if your selling price follows diesel. Our recommendation stays the stable-cost mix plus a gasoil futures hedge: with real market prices, the margin was only about 5% calmer.
+- **Profit-at-Risk calculator**: your expected monthly profit, your break-even selling price, and how much of your profit a bad month could take with each mix. If the market pays less than your costs, it shows your three choices: lower your costs, sell a better-paid product (UCOME), or produce less.
+- **Hedging: lock your margin**: choose how much you lock (crop oils with futures, UCO and tallow with forward contracts, selling price with gasoil futures), or use our recommended hedge. It shows your Profit-at-Risk with the hedge, the futures contracts to buy and the tonnes that stay at market price.
 - **Two basis-risk checks**: how well our proxies follow the real European prices.
 - **What if you change your rules?** Your daily risk, Cost-at-Risk and biggest feedstock for other caps and waste minimums.
 - **Your own data**: upload your real prices (Argus or your invoices) and get the recommended mix and the stable-margin mix on them.
@@ -119,7 +131,9 @@ The app then opens in your browser.
 ## Before you decide: limits
  
 - **Proxies are not your real prices.** Rapeseed is the weakest one, so you should hedge it with Euronext futures.
-- **The mix reduces how much your costs move, but it does not lock prices.** To fix a price, you would also need futures contracts.
+- **The mix reduces how much your costs move, but it does not lock prices.** That is what the hedge is for, and a hedge has its own costs: cash for margin calls, no gain if prices fall, and basis risk (for example Euronext rapeseed is a seed, and you buy rapeseed oil).
+- **A hedge locks a margin, it does not create one.** Below your break-even price (about $1,100 per tonne with the defaults), a hedge only locks in a loss.
+- **The hedge numbers are estimates**: they assume each hedge follows your real price perfectly and about 1 tonne of feedstock per tonne of biodiesel. A broker would set the exact hedge ratios.
 - **Prices are in US dollars**, but you pay in euros.
 - **The mix is based on past data**, and it is tested on the same data. Re-run it every month; a backtest on newer data would make the test stronger.
 - **With our proxies, the stable-margin mix looks better than it is**, because diesel (HO=F) is both our UCO proxy and the selling price. With real prices, the gain is usually small; a futures hedge on the selling side protects the margin better.
