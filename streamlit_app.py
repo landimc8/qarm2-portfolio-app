@@ -676,7 +676,7 @@ with st.expander("How much does our mix reduce cost swings?"):
     _monthly = (1 + _r).resample("ME").prod() - 1          # monthly price change of each proxy
     _cov = np.asarray(cov_matrix)
 
-    _names = {"ZL=F": "Only soybean oil (ZL=F)", "ZS=F": "Only soybeans (ZS=F)",
+    _names = {"ZL=F": "Only soybean oil (ZL=F)", "ZS=F": "Only rapeseed (soybeans, ZS=F)",
               "HO=F": "Only UCO (diesel, HO=F)", "LE=F": "Only live cattle (LE=F)",
               "DAR": "Only Darling (DAR)"}
     _options = {_names.get(t, "Only " + t): np.eye(len(PORTFOLIO_TICKERS))[i]
@@ -703,7 +703,10 @@ with st.expander("How much does our mix reduce cost swings?"):
         "Typical monthly cost change = standard deviation of the monthly price change of each option, "
         "on the same data as the model. This is diversification: the feedstocks don't all move together, "
         "so the cost of the mix moves less. In-sample: the weights come from the same data. "
-        "The equal split is only a comparison: it breaks the tallow cap (LE=F + DAR = 40%)."
+        "The equal split is only a comparison: it breaks the tallow cap (LE=F + DAR = 40%). "
+        "Live cattle alone looks as calm as our mix, but it breaks your cap (100% in one feedstock), "
+        "and it is only a proxy: real tallow prices move more than cattle prices, and one feedstock "
+        "cannot cover all your supply."
     )
 
 
