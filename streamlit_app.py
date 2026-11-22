@@ -1077,14 +1077,19 @@ with st.expander("Your own data: the recommended mix on your real prices"):
                     "Money": [f"${procurement_budget * x:,.0f}" for x in _rm.x],
                 }, index=_feeds))
                 _mm, _ms = np.sqrt(_mvar(_w)), np.sqrt(_mvar(_rm.x))
+                _gain = 1 - _ms / _mm
                 st.caption(f"How much your margin moves per row: main mix {_mm:.2%}, stable-margin mix "
-                           f"{_ms:.2%}, that is {1 - _ms / _mm:.0%} calmer. A small gain means none of "
-                           f"your feedstocks follows your selling price closely: to protect your margin, "
-                           f"a futures hedge on the selling side works better.")
+                           f"{_ms:.2%}, that is {_gain:.0%} calmer. "
+                           + ("A small gain like this means none of your feedstocks follows your selling "
+                              "price closely: to protect your margin, a futures hedge on the selling side "
+                              "works better." if _gain < 0.2 else
+                              "A large gain: some of your feedstocks follow your selling price, so the "
+                              "stable-margin mix is worth considering, together with a futures hedge."))
 
             st.caption("Same method and same rules as the main app (minimum variance, RED2 minimum, cap per "
-                       "feedstock), but on your real prices, so there is no basis risk from proxies. "
-                       "Waste-based feedstocks: UCO and Tallow. Cost-at-Risk assumes normal returns.")
+                       "feedstock), but on your real prices, so the basis risk from our proxies disappears. "
+                       "Some basis risk remains when you hedge, between your prices and the futures. "
+                       "Waste-based feedstocks: UCO and tallow. Cost-at-Risk assumes normal returns.")
 
 
 # --- what if you change your rules? (sensitivity table) ----------------------
