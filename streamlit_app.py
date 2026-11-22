@@ -282,18 +282,19 @@ ax.plot(unconstrained_frontier["volatilities"][valid_u], unconstrained_frontier[
 valid_c = constrained_frontier["success"]
 ax.plot(constrained_frontier["volatilities"][valid_c], constrained_frontier["returns"][valid_c],
         label="Constrained (RED2 + concentration cap)", color="steelblue", linewidth=2)
-ax.set_xlabel("Daily cost volatility (std. dev. of returns)")
-ax.set_ylabel("Expected daily return")
-ax.set_title("Cost of the client's real-world constraints")
+ax.set_xlabel("Daily cost volatility (how much your costs move each day)")
+ax.set_ylabel("Expected daily price change")
+ax.set_title("Cost of your real-world rules")
 ax.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
 ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
 ax.legend()
 st.pyplot(fig)
 
 st.caption(
-    "The gap between the grey and blue lines is the cost of the client's rules: for the same "
-    "risk, the blue line gives less return. At the default settings, the safest mix already "
-    "holds more than 40% waste, so most of this cost comes from the 35% cap per feedstock."
+    "The gap between the grey and blue lines is the cost of your rules: the safest mix you can buy "
+    "moves more each day. At the default settings, the safest mix already holds more than 40% waste, "
+    "so most of this cost comes from the 35% cap per feedstock. We recommend the leftmost point of "
+    "the blue line: it ignores price forecasts and only minimises how much your costs move."
 )
 
 # live evidence for the diversification note in the basis-risk expander
@@ -367,7 +368,7 @@ with col1:
 
 with col2:
     st.metric("Expected daily cost volatility", f"{recommended['volatility']:.4%}")
-    st.metric("Expected daily return", f"{recommended['return']:.4%}")
+    st.metric("Expected daily price change", f"{recommended['return']:.4%}")
 
     sustainability_achieved = sustainability_share(weights)
     sustainability_pass = sustainability_achieved >= sustainability_min - 1e-9
@@ -581,7 +582,7 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel)"):
     def _margin_risk(x):
         return np.sqrt(_margin_var(x))
 
-        st.markdown(
+    st.markdown(
         "If you sell your biodiesel at a price linked to diesel, your **margin** is roughly "
         "*selling price change − feedstock cost change*. Minimizing the variance of the margin is "
         "the same as minimizing the **tracking error** against a benchmark *b* = 100% diesel: "
