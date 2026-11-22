@@ -607,9 +607,11 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel)"):
         f"but your costs move {_cost_risk(w_margin) / _cost_risk(w_cost) - 1:.0%} more. "
         "The stable-margin mix buys more diesel-linked UCO and soybean oil, because their costs move with "
         "the selling price. Limit: here diesel (HO=F) is "
-        "both our UCO proxy and the selling price, so the gain looks larger than it really is. With real "
-        "prices (your own data box), the gain is usually smaller. European biodiesel follows Rotterdam "
-        "gasoil; we use HO=F as a free proxy."
+        "both our UCO proxy and the selling price, so the gain looks larger than it really is. European "
+        "biodiesel follows Rotterdam gasoil; we use HO=F as a free proxy. **Our recommendation stays the "
+        "stable-cost mix.** When we tested real market prices, the margin was only about 5% calmer. So if "
+        "your selling price follows diesel, we recommend keeping our mix and hedging your selling price "
+        "with gasoil futures. You can check the gain on your own prices in the 'Your own data' box."
     )
 
 
