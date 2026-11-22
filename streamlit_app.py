@@ -933,18 +933,18 @@ with st.expander("Recommended data sources (next version of your tool)"):
     )
     st.table(pd.DataFrame({
         "Source we recommend": [
-            "Argus",
-            "Argus",
+            "Argus or SquareCommodities (spot prices)",
+            "Argus or SquareCommodities (FAME 0°, UCOME)",
             "SquareCommodities (regulatory data)",
-            "ICE (gasoil), CME (soybean oil), Euronext (rapeseed)",
+            "ICE (gasoil, FAME 0°), CBOT (soybean oil), Euronext (rapeseed), your suppliers (UCO, tallow)",
             "Nabisy",
             "EIA, IEA, JODI (oil and diesel), USDA (oilseeds)",
         ],
         "What it replaces or adds in the tool": [
             "Replaces our proxies (HO=F, LE=F, DAR, ZS=F), so most of the basis risk disappears",
-            "Replaces diesel (HO=F) as the benchmark for the stable-margin mix",
+            "Replaces diesel (HO=F) in the stable-margin mix, and gives the real selling price for the Profit-at-Risk calculator and your break-even",
             "Replaces our assumed 40% RED2 minimum with the real mandate level",
-            "With Argus prices, gives the hedge ratio to lock your prices with futures",
+            "With your real prices, turns our rough contract numbers in the hedging box into exact hedge ratios",
             "Confirms which volumes count as waste-based for RED2",
             "Helps you decide when and how much to hedge (supply, demand, stocks)",
         ],

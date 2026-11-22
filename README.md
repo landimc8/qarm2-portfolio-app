@@ -95,10 +95,10 @@ You can already upload your real prices in the sidebar ("Add your own data"): do
  
 | What it improves | Source we recommend | What it replaces or adds |
 |---|---|---|
-| Your real feedstock prices (UCO, tallow, rapeseed oil, soybean oil) | **Argus** | Replaces our proxies, so most of the basis risk disappears |
-| Your selling price (FAME, HVO) | **Argus** | Replaces diesel (HO=F) as the benchmark for the stable-margin mix |
+| Your real feedstock prices (UCO, tallow, rapeseed oil, soybean oil) | **Argus** or **SquareCommodities** (spot prices) | Replaces our proxies, so most of the basis risk disappears |
+| Your selling price (FAME 0°, UCOME) | **Argus** or **SquareCommodities** | Replaces diesel (HO=F) in the stable-margin mix, and gives the real selling price for the Profit-at-Risk calculator and your break-even |
 | The real mandate levels | **SquareCommodities** (regulatory data) | Replaces our assumed 40% RED2 minimum |
-| Futures for the hedge | **ICE** (gasoil), **CME** (soybean oil), **Euronext** (rapeseed) | With Argus prices, gives the hedge ratio to lock your prices |
+| Futures for the hedge | **ICE** (gasoil, FAME 0°), **CBOT** (soybean oil), **Euronext** (rapeseed), your suppliers (UCO, tallow) | With your real prices, turns our rough contract numbers in the hedging box into exact hedge ratios |
 | Sustainability proofs | **Nabisy** | Confirms which volumes count as waste-based for RED2 |
 | Market fundamentals | **EIA, IEA, JODI** (oil and diesel), **USDA** (oilseeds) | Helps you decide when and how much to hedge |
  
