@@ -400,33 +400,35 @@ st.header("Risk budgeting: where the risk actually comes from")
 
 rc = risk_contributions(weights, cov_matrix)
 fig3, ax3 = plt.subplots(figsize=(7, 4))
-bars3 = ax3.bar(PORTFOLIO_TICKERS, rc, color=bar_colors)
+_short = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed\n(soybeans)", "HO=F": "UCO\n(diesel)",
+          "LE=F": "Tallow\n(live cattle)", "DAR": "Tallow\n(Darling)"}
+bars3 = ax3.bar([_short.get(t, t) for t in PORTFOLIO_TICKERS], rc, color=bar_colors)
 ax3.bar_label(bars3, labels=[f"{v:.1%}" for v in rc], padding=3, fontsize=9)
-ax3.set_ylabel("% contribution to total portfolio variance")
+ax3.set_ylabel("Share of your cost risk")
 ax3.set_title("Risk contribution per feedstock")
 ax3.set_ylim(0, rc.max() * 1.25)  # headroom for the labels
 ax3.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
 st.pyplot(fig3)
 
+_i_zl, _i_le = PORTFOLIO_TICKERS.index("ZL=F"), PORTFOLIO_TICKERS.index("LE=F")
 st.caption(
-    "A feedstock's risk contribution isn't always proportional to its "
-    "allocation weight -- a smaller position in a volatile or highly "
-    "correlated feedstock can still dominate overall portfolio risk. "
-    "This is the risk-budgeting lens layered on top of the mean-variance result."
+    f"Each bar shows how much of your cost risk comes from each feedstock. This is not the same as how "
+    f"much you buy: soybean oil is {weights[_i_zl]:.0%} of your budget but {rc[_i_zl]:.0%} of your risk, "
+    f"because its price jumps more and moves with your rapeseed. Live cattle (tallow) is "
+    f"{weights[_i_le]:.0%} of your budget but only {rc[_i_le]:.0%} of your risk: it is your calmest "
+    f"feedstock, and the best mix would buy more of it if your cap allowed."
 )
 
 
 # --- raw numbers, for anyone checking the math -----------------------------
 
-with st.expander("Show raw weights and risk contributions"):
-    st.write({
-        ticker: {
-            "weight": round(float(w), 4),
-            "risk_contribution": round(float(r), 4),
-            "bucket": "waste-based" if ticker in WASTE_BASED else "crop-based",
-        }
-        for ticker, w, r in zip(PORTFOLIO_TICKERS, weights, rc)
-    })
+with st.expander("Exact numbers: share of budget and share of risk"):
+    st.dataframe(pd.DataFrame({
+        "Code": PORTFOLIO_TICKERS,
+        "Share of budget": [f"{w:.2%}" for w in weights],
+        "Share of risk": [f"{r:.2%}" for r in rc],
+        "Type": ["Waste-based (RED2)" if t in WASTE_BASED else "Crop-based" for t in PORTFOLIO_TICKERS],
+    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS]))
 
 
 # --- global minimum variance (LN1 closed form, no client rules) -------------
