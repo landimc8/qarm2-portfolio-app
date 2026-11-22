@@ -901,6 +901,13 @@ with st.expander("Hedging: lock your margin (futures and forward contracts)"):
         _r.append(f"about {_tq / _per_contract[_r[0]]:,.0f}" if _r[0] in _per_contract and _tq > 0 else "—")
     st.table(pd.DataFrame(_hrows, columns=["What you lock", "How", "Tonnes per month", "Futures contracts"])
              .set_index("What you lock"))
+    _locked = float(sum(_tn[t] * h for t, h in zip(PORTFOLIO_TICKERS, _hv)))
+    _open = max(_tonnes - _locked, 0.0)
+    st.markdown(
+        f"**In total:** you lock about **{_locked:,.0f} t** of your {_tonnes:,.0f} t a month "
+        f"({_locked / _tonnes:.0%}). About **{_open:,.0f} t stay at market price**: for these, you pay "
+        f"whatever the market asks that month." if _tonnes > 0 else ""
+    )
 
     if _profit <= 0:
         st.warning("Your margin is negative at these prices: a hedge would only lock in this loss. "
