@@ -725,16 +725,16 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
         _sales = st.radio("How do you sell your biodiesel?",
                           ["Fixed selling price", "Selling price follows diesel"], key="pc_sales")
         _price = st.number_input("Selling price ($ per tonne of biodiesel)", min_value=0.0,
-                                 value=1500.0, step=50.0, key="pc_price")
+                                 value=1180.0, step=10.0, key="pc_price")
     with _c2:
         _tonnes = st.number_input("Tonnes sold per month", min_value=0.0,
                                   value=10000.0, step=500.0, key="pc_tonnes")
         _other = st.number_input("Other costs ($ per tonne: energy, staff, transport)", min_value=0.0,
-                                 value=300.0, step=25.0, key="pc_other")
+                                 value=100.0, step=10.0, key="pc_other")
     _share = st.slider("If the price follows diesel: share of the selling price that moves with diesel", 0, 100, 67, 1,
                        key="pc_share", format="%d%%",
-                       help="Example: biodiesel sold at the diesel price + a fixed premium of $500/t. "
-                            "At $1,500/t, the diesel part is $1,000, so 67% of the price moves with diesel.") / 100
+                       help="Example: biodiesel sold at the diesel price + a fixed premium of $400/t. "
+                            "At $1,180/t, the diesel part is $780, so 66% of the price moves with diesel.") / 100
 
     _h = car_horizon if "car_horizon" in globals() else 21
     _lvl = car_conf if "car_conf" in globals() else "95%"
@@ -798,6 +798,21 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
                  "feedstock + other costs. Check the selling price, tonnes and the budget in the sidebar.")
     elif _profit - _par_best < 0:
         st.warning("In a bad month, the profit could turn into a loss. You may also need futures to lock your prices.")
+    _breakeven = (_feed + _other_total) / _tonnes if _tonnes > 0 else 0.0
+    st.markdown(
+        f"**Your break-even selling price: ${_breakeven:,.0f} per tonne** "
+        f"(feedstock + other costs, divided by tonnes). Below it you lose money, above it you make a profit."
+        .replace("$", "\\$")
+    )
+    if _profit - _par_best < 0:
+        st.markdown(
+            "**What if the market pays less than your costs?** FAME is a market price (ICE gasoil + a premium), "
+            "so you can't simply raise your selling price. You have three choices:\n"
+            "1. **Lower your costs:** cheaper or waste-based feedstocks, better buying, lower processing costs.\n"
+            "2. **Sell a better-paid product:** UCOME usually sells above FAME 0°, because waste-based biodiesel "
+            "counts double for the RED mandates.\n"
+            "3. **Produce less, or pause the plant,** until margins come back."
+        )
     st.caption(
         "Profit-at-Risk = √(dᵀΣd) × √days × z, where d = dollar exposure: + the diesel-linked part of sales "
         "(only if the price follows diesel), − feedstock budget × mix weights. Same parametric formula as the "
