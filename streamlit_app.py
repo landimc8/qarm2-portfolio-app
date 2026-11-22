@@ -454,7 +454,7 @@ with st.expander("Compare: global minimum variance (no rules) vs our recommended
         "Analytical solution (budget only)": [f"{w:.1%}" for w in w_gmv] + [f"{vol_gmv:.2%}"],
         "Grey line minimum (budget + long-only)": [f"{w:.1%}" for w in w_grey] + [f"{vol_grey:.2%}"],
         "Our recommended mix (+ RED2 + cap)": [f"{w:.1%}" for w in weights] + [f"{recommended['volatility']:.2%}"],
-    }, index=PORTFOLIO_TICKERS + ["Daily risk"]))
+    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS] + ["Daily risk"]))
     st.caption(
         "The analytical solution has no negative weights on our data, so it matches the grey line's "
         "safest point (small differences come from the 50-point grid). It puts about two-thirds of the "
@@ -601,10 +601,12 @@ with st.expander("Stable costs or stable margin? (tracking error vs diesel)"):
             + [f"{_cost_risk(w_cost):.2%}", f"{_margin_risk(w_cost):.2%}", f"{sustainability_share(w_cost):.0%}"],
         "Stable margin (tracking error vs diesel)": [f"{w:.1%}" for w in w_margin]
             + [f"{_cost_risk(w_margin):.2%}", f"{_margin_risk(w_margin):.2%}", f"{sustainability_share(w_margin):.0%}"],
-    }, index=PORTFOLIO_TICKERS + ["Daily cost risk", "Daily margin risk", "Waste share (RED2)"]))
+    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS] + ["Daily cost risk", "Daily margin risk", "Waste share (RED2)"]))
     st.caption(
+        f"With the stable-margin mix, your margin moves {1 - _margin_risk(w_margin) / _margin_risk(w_cost):.0%} less, "
+        f"but your costs move {_cost_risk(w_margin) / _cost_risk(w_cost) - 1:.0%} more. "
         "The stable-margin mix buys more diesel-linked UCO and soybean oil, because their costs move with "
-        "the selling price. Its costs move more, but its margin moves less. Limit: here diesel (HO=F) is "
+        "the selling price. Limit: here diesel (HO=F) is "
         "both our UCO proxy and the selling price, so the gain looks larger than it really is. With real "
         "prices (your own data box), the gain is usually smaller. European biodiesel follows Rotterdam "
         "gasoil; we use HO=F as a free proxy."
