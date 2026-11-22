@@ -823,6 +823,100 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
     )
 
 
+# --- hedging: lock your margin with futures and forward contracts ------------
+
+with st.expander("Hedging: lock your margin (futures and forward contracts)"):
+    st.markdown(
+        "Our mix makes your costs as **stable** as possible. A hedge goes one step further: it **locks** a "
+        "price today for the coming months. Choose how much you want to lock. The numbers use the inputs of "
+        "the Profit-at-Risk calculator above."
+    )
+    st.markdown(
+        "**Our recommended hedge:** lock **100% of your crop oils** with futures (they create most of your "
+        "risk and their futures are easy to trade), and **50% of your UCO and tallow** with forward contracts "
+        "(you keep some room if prices fall). If your selling price follows diesel, also lock the selling "
+        "price with gasoil futures."
+    )
+
+    def _hg_recommended():
+        st.session_state["hg_crop"] = 100
+        st.session_state["hg_waste"] = 50
+        st.session_state["hg_sell"] = 100 if st.session_state.get("pc_sales") == "Selling price follows diesel" else 0
+
+    def _hg_reset():
+        for _k in ("hg_crop", "hg_waste", "hg_sell"):
+            st.session_state[_k] = 0
+
+    _hb1, _hb2, _hb3 = st.columns([2, 1, 3])
+    _hb1.button("Use our recommended hedge", on_click=_hg_recommended, key="hg_btn")
+    _hb2.button("No hedge", on_click=_hg_reset, key="hg_reset")
+
+    _hc1, _hc2, _hc3 = st.columns(3)
+    with _hc1:
+        _h_crop = st.slider("Crop oils locked with futures", 0, 100, step=10, format="%d%%", key="hg_crop",
+                            help="Soybean oil: CBOT soybean oil futures. Rapeseed oil: Euronext rapeseed futures.") / 100
+    with _hc2:
+        _h_waste = st.slider("UCO and tallow locked with forward contracts", 0, 100, step=10, format="%d%%",
+                             key="hg_waste",
+                             help="There are no liquid futures for UCO and tallow: you fix the price with your "
+                                  "suppliers for the coming months.") / 100
+    with _hc3:
+        _h_sell = st.slider("Selling price locked with gasoil futures", 0, 100, step=10, format="%d%%",
+                            key="hg_sell",
+                            help="Only used if your selling price follows diesel (choose it in the calculator "
+                                 "above): you sell ICE gasoil futures.") / 100
+
+    _hv = np.array([_h_crop if t in ("ZL=F", "ZS=F") else _h_waste for t in PORTFOLIO_TICKERS])
+
+    def _par_hedged(hv, hs):
+        # dollar exposure left after the hedges: the locked part of each price no longer moves
+        d = (_revenue * _share * (1 - hs) * _b if _follows else 0.0) - _feed * _w_main * (1 - hv)
+        return float(np.sqrt(d @ _cov @ d) * np.sqrt(_h) * _z)
+
+    _p_none = _par_hedged(np.zeros(len(PORTFOLIO_TICKERS)), 0.0)
+    _p_hedged = _par_hedged(_hv, _h_sell if _follows else 0.0)
+
+    hm1, hm2, hm3 = st.columns(3)
+    hm1.metric("Profit-at-Risk without hedge", _usd(_p_none),
+               help="Our mix (stable costs), with the inputs of the calculator above.")
+    hm2.metric("Profit-at-Risk with your hedges", _usd(_p_hedged),
+               delta=f"{(_p_hedged - _p_none) / _p_none:+.0%}" if _p_hedged < _p_none else None, delta_color="inverse")
+    hm3.metric("Profit in a bad month", _usd(_profit - _p_hedged),
+               delta=f"{_usd(_p_none - _p_hedged)} more than without hedge" if _p_hedged < _p_none else None)
+
+    _tn = {t: _tonnes * w for t, w in zip(PORTFOLIO_TICKERS, _w_main)}
+    _hrows = [
+        ["Soybean oil", "CBOT soybean oil futures (about 27 t per contract)", f"{_tn['ZL=F'] * _h_crop:,.0f} t"],
+        ["Rapeseed oil", "Euronext rapeseed futures (50 t of seed per contract)", f"{_tn['ZS=F'] * _h_crop:,.0f} t"],
+        ["UCO", "Fixed-price forward contracts with your suppliers", f"{_tn['HO=F'] * _h_waste:,.0f} t"],
+        ["Tallow", "Fixed-price forward contracts with your suppliers",
+         f"{(_tn['LE=F'] + _tn['DAR']) * _h_waste:,.0f} t"],
+    ]
+    if _follows:
+        _hrows.append(["Selling price", "Sell ICE gasoil futures (100 t per contract)",
+                       f"{_tonnes * _share * _h_sell:,.0f} t"])
+    _per_contract = {"Soybean oil": 27.2, "Rapeseed oil": 50 / 2.4, "Selling price": 100.0}
+    for _r in _hrows:
+        _tq = float(_r[2].replace(",", "").replace(" t", ""))
+        _r.append(f"about {_tq / _per_contract[_r[0]]:,.0f}" if _r[0] in _per_contract and _tq > 0 else "—")
+    st.table(pd.DataFrame(_hrows, columns=["What you lock", "How", "Tonnes per month", "Futures contracts"])
+             .set_index("What you lock"))
+
+    if _profit <= 0:
+        st.warning("Your margin is negative at these prices: a hedge would only lock in this loss. "
+                   "Look at the three choices in the Profit-at-Risk calculator first.")
+
+    st.caption(
+        "A hedge does not make your feedstocks cheaper: it fixes the price. You are protected if prices rise, "
+        "but you don't gain if they fall, and futures need cash for margin calls. Best practice: when you sign "
+        "a fixed selling price, lock your feedstock costs on the same day (back-to-back), so your margin is "
+        "locked too. Limits: the numbers assume each hedge follows your real price perfectly. In reality, basis "
+        "risk remains, for example between Euronext rapeseed (a seed) and your rapeseed oil. Tonnes assume "
+        "about 1 tonne of feedstock per tonne of biodiesel. Rapeseed contracts use about 2.4 t of seed per tonne "
+        "of oil: a broker would set the exact hedge ratio."
+    )
+
+
 # --- recommended data sources for the next version ---------------------------
 
 with st.expander("Recommended data sources (next version of your tool)"):
