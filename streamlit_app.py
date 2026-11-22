@@ -950,12 +950,25 @@ with st.expander("Recommended data sources (next version of your tool)"):
         ],
     }, index=[
         "Your feedstock prices (UCO, tallow, rapeseed oil, soybean oil)",
-        "Your selling price (FAME, HVO)",
+        "Your selling price (FAME 0°, UCOME)",
         "The real mandate levels",
         "Futures for the hedge",
         "Sustainability proofs",
         "Market fundamentals",
     ]))
+    st.markdown(
+        "**Links:** "
+        "[Argus](https://www.argusmedia.com/en/commodities/biofuels-and-feedstocks) · "
+        "[SquareCommodities](https://www.squarecommodities.com) · "
+        "[ICE](https://www.ice.com) · "
+        "[CBOT / CME Group](https://www.cmegroup.com) · "
+        "[Euronext](https://live.euronext.com) · "
+        "[Nabisy](https://nabisy.ble.de/app/start) · "
+        "[EIA](https://www.eia.gov) · "
+        "[IEA](https://www.iea.org) · "
+        "[JODI](https://www.jodidata.org) · "
+        "[USDA FAS](https://fas.usda.gov)"
+    )
     st.caption(
         "Prices (Argus and the exchanges) go into the model. Fundamentals (EIA, IEA, JODI, USDA) and "
         "regulatory data (SquareCommodities, Nabisy) set the rules and explain why prices move. "

@@ -102,6 +102,8 @@ You can already upload your real prices in the sidebar ("Add your own data"): do
 | Sustainability proofs | **Nabisy** | Confirms which volumes count as waste-based for RED2 |
 | Market fundamentals | **EIA, IEA, JODI** (oil and diesel), **USDA** (oilseeds) | Helps you decide when and how much to hedge |
  
+**Links:** [Argus](https://www.argusmedia.com/en/commodities/biofuels-and-feedstocks) · [SquareCommodities](https://www.squarecommodities.com) · [ICE](https://www.ice.com) · [CBOT / CME Group](https://www.cmegroup.com) · [Euronext](https://live.euronext.com) · [Nabisy](https://nabisy.ble.de/app/start) · [EIA](https://www.eia.gov) · [IEA](https://www.iea.org) · [JODI](https://www.jodidata.org) · [USDA FAS](https://fas.usda.gov)
+ 
 Prices (Argus and the exchanges) go into the model. Fundamentals (EIA, IEA, JODI, USDA) and regulatory data (SquareCommodities, Nabisy) set the rules and explain why prices move.
  
 ## Data
