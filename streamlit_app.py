@@ -645,8 +645,17 @@ with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Eur
     c2.metric("Correlation ZL=F vs rapeseed", f"{_c_zl:.2f}")
     c3.metric("Weeks compared", f"{len(_ret)}")
 
-    st.line_chart((_wk / _wk.iloc[0] * 100).rename(columns={
-        "ZS=F": "US soybeans (ZS=F)", "ZL=F": "US soybean oil (ZL=F)"}))
+    _idx = _wk / _wk.iloc[0] * 100
+    fig_rs, ax_rs = plt.subplots(figsize=(9, 4))
+    ax_rs.plot(_idx.index, _idx["Rapeseed (Euronext)"], color="black", linewidth=1.5,
+               label="European rapeseed (Euronext): your real price")
+    ax_rs.plot(_idx.index, _idx["ZS=F"], color=TICKER_COLORS["ZS=F"], linewidth=1,
+               label="US soybeans (ZS=F): our rapeseed proxy")
+    ax_rs.plot(_idx.index, _idx["ZL=F"], color=TICKER_COLORS["ZL=F"], linewidth=1, linestyle="--",
+               label="US soybean oil (ZL=F)")
+    ax_rs.set_ylabel("Price index (start = 100)")
+    ax_rs.legend()
+    st.pyplot(fig_rs)
     st.caption(
         "Prices indexed to 100 at the start. Correlation of weekly returns; roll weeks removed. "
         "Rapeseed is in €/tonne and ZS=F in US cents per bushel, so we compare price changes, "
