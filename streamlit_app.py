@@ -705,7 +705,7 @@ with st.expander("How much does our mix reduce cost swings?"):
         "so the cost of the mix moves less. In-sample: the weights come from the same data. "
         "The equal split is only a comparison: it breaks the tallow cap (LE=F + DAR = 40%). "
         "Live cattle alone looks as calm as our mix, but it breaks your cap (100% in one feedstock), "
-        "and it is only a proxy: real tallow prices move more than cattle prices, and one feedstock "
+        "and it is only a proxy: real tallow prices can move differently from cattle prices, and one feedstock "
         "cannot cover all your supply."
     )
 
