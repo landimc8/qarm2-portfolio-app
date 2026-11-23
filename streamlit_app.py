@@ -376,6 +376,89 @@ with st.expander("Behind the chart: the two dots and the flat part of the grey l
     )
 
 
+# --- explore the curves point by point -----------------------------------------
+
+with st.expander("Explore the curves point by point"):
+    _ex_names = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed (soybeans)", "HO=F": "UCO (diesel)",
+                 "LE=F": "Tallow (live cattle)", "DAR": "Tallow (Darling)"}
+    _ex_short = {"ZL=F": "Soybean oil", "ZS=F": "Soybeans", "HO=F": "UCO", "LE=F": "Live cattle", "DAR": "Darling"}
+    _ex_line = st.radio("Slide along:", ["The blue line (your rules)", "The grey line (no rules)"],
+                        horizontal=True, key="ex_line")
+    _ex_is_grey = _ex_line.startswith("The grey")
+    _ex_f = unconstrained_frontier if _ex_is_grey else constrained_frontier
+    _ex_idx = sorted([i for i in range(len(_ex_f["success"])) if _ex_f["success"][i]],
+                     key=lambda i: -_ex_f["returns"][i])
+    _ex_mv = int(min_variance_portfolio(_ex_f)["index"])
+    _ex_start = _ex_idx.index(_ex_mv) if _ex_mv in _ex_idx else 0
+    _ex_pos = st.slider("Move along the line (left = top of the curve, right = bottom of the curve)",
+                        0, len(_ex_idx) - 1, _ex_start, key="ex_pos_grey" if _ex_is_grey else "ex_pos_blue")
+    _ex_i = _ex_idx[_ex_pos]
+    _ex_w = np.asarray(_ex_f["weights"][_ex_i], dtype=float)
+    _ex_vol, _ex_ret = float(_ex_f["volatilities"][_ex_i]), float(_ex_f["returns"][_ex_i])
+    _sd = np.sqrt(np.diag(np.asarray(cov_matrix)))
+    _mu = np.asarray(mean_returns)
+
+    fig_ex, ax_ex = plt.subplots(figsize=(9, 5))
+    _vu, _vc = unconstrained_frontier["success"], constrained_frontier["success"]
+    ax_ex.plot(unconstrained_frontier["volatilities"][_vu], unconstrained_frontier["returns"][_vu],
+               linestyle="--", color="gray", label="Grey line: no rules")
+    ax_ex.plot(constrained_frontier["volatilities"][_vc], constrained_frontier["returns"][_vc],
+               color="steelblue", linewidth=2, label="Blue line: your rules")
+    for _k, _t in enumerate(PORTFOLIO_TICKERS):
+        _on = _ex_w[_k] > 0.005
+        ax_ex.scatter(_sd[_k], _mu[_k], marker="s", s=70, color=TICKER_COLORS[_t], edgecolor="black",
+                      alpha=1.0 if _on else 0.3, zorder=4)
+        ax_ex.annotate(_ex_short[_t], (_sd[_k], _mu[_k]), xytext=(7, 5), textcoords="offset points", fontsize=9)
+    _g_mv, _r_mv = min_variance_portfolio(unconstrained_frontier), min_variance_portfolio(constrained_frontier)
+    ax_ex.scatter(_g_mv["volatility"], _g_mv["return"], color="gray", s=45, zorder=5, label="Grey dot: safest, no rules")
+    ax_ex.scatter(_r_mv["volatility"], _r_mv["return"], color="#D62728", s=80, edgecolor="black", zorder=6,
+                  label="Red dot: our recommendation")
+    ax_ex.scatter(_ex_vol, _ex_ret, s=260, facecolors="none", edgecolors="black", linewidths=2.2, zorder=7,
+                  label="You are here")
+    ax_ex.set_xlabel("Daily cost volatility (how much your costs move each day)")
+    ax_ex.set_ylabel("Expected daily price change")
+    ax_ex.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax_ex.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax_ex.legend(fontsize=8, loc="best")
+    st.pyplot(fig_ex)
+
+    _ex_waste = float(sum(_ex_w[PORTFOLIO_TICKERS.index(t)] for t in WASTE_BASED if t in PORTFOLIO_TICKERS))
+    _ex_tallow = _ex_w[PORTFOLIO_TICKERS.index("LE=F")] + _ex_w[PORTFOLIO_TICKERS.index("DAR")]
+    _ex_big = max([_ex_w[PORTFOLIO_TICKERS.index(t)] for t in PORTFOLIO_TICKERS if t not in ("LE=F", "DAR")]
+                  + [_ex_tallow])
+    _ex_ok_w = _ex_waste >= sustainability_min - 1e-3
+    _ex_ok_c = _ex_big <= concentration_cap + 1e-3
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("Daily risk", f"{_ex_vol:.2%}")
+    e2.metric("Expected daily price change", f"{_ex_ret:.3%}")
+    e3.metric(f"Waste share (min {sustainability_min:.0%})", f"{_ex_waste:.0%} {'✅' if _ex_ok_w else '❌'}")
+    e4.metric(f"Largest feedstock (cap {concentration_cap:.0%})", f"{_ex_big:.0%} {'✅' if _ex_ok_c else '❌'}",
+              help="Tallow counts once: live cattle + Darling.")
+
+    if _ex_i == _ex_mv:
+        _ex_where = ("Grey dot: the safest mix with no rules." if _ex_is_grey
+                     else "Red dot: our recommendation, the safest mix that follows your rules.")
+    elif _ex_ret > _ex_f["returns"][_ex_mv]:
+        _ex_where = "Upper half of the curve: prices rose faster, and your costs move more."
+    else:
+        _ex_where = "Bottom half of the curve: prices rose a little less, but your costs move more."
+    if _ex_is_grey and _ex_w[PORTFOLIO_TICKERS.index("DAR")] > 0.995:
+        _ex_where = "Right end of the grey line: 100% Darling."
+    st.markdown(f"**Where you are:** {_ex_where}")
+
+    st.dataframe(pd.DataFrame({
+        "Share of your budget": [round(float(x) * 100, 1) for x in _ex_w],
+        "Daily risk alone": [f"{_sd[k]:.2%}" for k in range(len(PORTFOLIO_TICKERS))],
+        "Average daily price change alone": [f"{_mu[k]:.3%}" for k in range(len(PORTFOLIO_TICKERS))],
+    }, index=[_ex_names[t] for t in PORTFOLIO_TICKERS]),
+        column_config={"Share of your budget": st.column_config.ProgressColumn(
+            "Share of your budget", min_value=0, max_value=100, format="%.0f%%")})
+    st.caption("The squares are each feedstock alone; faded squares are not in the mix at this point. "
+               "On the blue line, moving away from the red dot only adds risk. The grey dot breaks your cap: "
+               "it puts most of your money in live cattle. The flat end of the grey line is the mix sliding "
+               "toward 100% Darling, which your cap forbids.")
+
+
 # --- recommended allocation ------------------------------------------------
 
 st.header("Recommended allocation")
