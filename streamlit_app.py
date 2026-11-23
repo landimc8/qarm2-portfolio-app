@@ -389,16 +389,36 @@ with st.expander("Explore the curves point by point"):
     _ex_names = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed (soybeans)", "HO=F": "UCO (diesel)",
                  "LE=F": "Tallow (live cattle)", "DAR": "Tallow (Darling)"}
     _ex_short = {"ZL=F": "Soybean oil", "ZS=F": "Soybeans", "HO=F": "UCO", "LE=F": "Live cattle", "DAR": "Darling"}
-    _ex_line = st.radio("Slide along:", ["The blue line (your rules)", "The grey line (no rules)"],
-                        horizontal=True, key="ex_line")
+    _ex_lines = ["The blue line (your rules)", "The grey line (no rules)"]
+    _sh_pick = max_sharpe_equivalent_portfolio(constrained_frontier)
+
+    def _ex_blue_pos(target):
+        _f = constrained_frontier
+        _ids = sorted([i for i in range(len(_f["success"])) if _f["success"][i]], key=lambda i: -_f["returns"][i])
+        return _ids.index(int(target)) if int(target) in _ids else 0
+
+    def _ex_go(target):
+        st.session_state["ex_line"] = _ex_lines[0]
+        st.session_state["ex_pos_blue"] = _ex_blue_pos(target)
+
+    _xb1, _xb2, _xb3 = st.columns([1, 1, 2])
+    _xb1.button("Go to the red dot", key="ex_go_red",
+                on_click=_ex_go, args=(min_variance_portfolio(constrained_frontier)["index"],))
+    _xb2.button("Go to the Sharpe point", key="ex_go_sharpe", on_click=_ex_go, args=(_sh_pick["index"],))
+    if "ex_line" not in st.session_state:
+        st.session_state["ex_line"] = _ex_lines[0]
+    _ex_line = st.radio("Slide along:", _ex_lines, horizontal=True, key="ex_line")
     _ex_is_grey = _ex_line.startswith("The grey")
     _ex_f = unconstrained_frontier if _ex_is_grey else constrained_frontier
     _ex_idx = sorted([i for i in range(len(_ex_f["success"])) if _ex_f["success"][i]],
                      key=lambda i: -_ex_f["returns"][i])
     _ex_mv = int(min_variance_portfolio(_ex_f)["index"])
     _ex_start = _ex_idx.index(_ex_mv) if _ex_mv in _ex_idx else 0
+    _ex_key = "ex_pos_grey" if _ex_is_grey else "ex_pos_blue"
+    if _ex_key not in st.session_state or st.session_state[_ex_key] > len(_ex_idx) - 1:
+        st.session_state[_ex_key] = _ex_start
     _ex_pos = st.slider("Move along the line (left = top of the curve, right = bottom of the curve)",
-                        0, len(_ex_idx) - 1, _ex_start, key="ex_pos_grey" if _ex_is_grey else "ex_pos_blue")
+                        0, len(_ex_idx) - 1, key=_ex_key)
     _ex_i = _ex_idx[_ex_pos]
     _ex_w = np.asarray(_ex_f["weights"][_ex_i], dtype=float)
     _ex_vol, _ex_ret = float(_ex_f["volatilities"][_ex_i]), float(_ex_f["returns"][_ex_i])
@@ -420,8 +440,17 @@ with st.expander("Explore the curves point by point"):
     ax_ex.scatter(_g_mv["volatility"], _g_mv["return"], color="gray", s=45, zorder=5, label="Grey dot: safest, no rules")
     ax_ex.scatter(_r_mv["volatility"], _r_mv["return"], color="#D62728", s=80, edgecolor="black", zorder=6,
                   label="Red dot: our recommendation")
+    _sh_slope = _sh_pick["return"] / _sh_pick["volatility"]
+    _x_line = np.array([0.0, max(_sd) * 1.02])
+    ax_ex.plot(_x_line, _sh_slope * _x_line, linestyle=":", color="#7F77DD", linewidth=1.5,
+               label="Steepest line from zero")
+    ax_ex.scatter(_sh_pick["volatility"], _sh_pick["return"], marker="D", color="#7F77DD", s=80, edgecolor="black",
+                  zorder=6, label="Sharpe-equivalent: best price change per risk")
     ax_ex.scatter(_ex_vol, _ex_ret, s=260, facecolors="none", edgecolors="black", linewidths=2.2, zorder=7,
                   label="You are here")
+    _xl = ax_ex.get_xlim()
+    ax_ex.set_xlim(max(_xl[0], min(_sd) * 0.6), _xl[1])
+    ax_ex.set_ylim(min(0.0, float(min(_mu))) - 0.00002, float(max(_mu)) * 1.12)
     ax_ex.set_xlabel("Daily cost volatility (how much your costs move each day)")
     ax_ex.set_ylabel("Expected daily price change")
     ax_ex.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
@@ -435,9 +464,12 @@ with st.expander("Explore the curves point by point"):
                   + [_ex_tallow])
     _ex_ok_w = _ex_waste >= sustainability_min - 1e-3
     _ex_ok_c = _ex_big <= concentration_cap + 1e-3
-    e1, e2, e3, e4 = st.columns(4)
+    e1, e2, e5, e3, e4 = st.columns(5)
     e1.metric("Daily risk", f"{_ex_vol:.2%}")
     e2.metric("Expected daily price change", f"{_ex_ret:.3%}")
+    e5.metric("Price change per risk", f"{_ex_ret / _ex_vol:.4f}",
+              help="Expected daily price change ÷ daily risk: the Sharpe ratio with a risk-free rate of 0. "
+                   "The Sharpe-equivalent point has the highest value on the blue line.")
     e3.metric(f"Waste share (min {sustainability_min:.0%})", f"{_ex_waste:.0%} {'✅' if _ex_ok_w else '❌'}")
     e4.metric(f"Largest feedstock (cap {concentration_cap:.0%})", f"{_ex_big:.0%} {'✅' if _ex_ok_c else '❌'}",
               help="Tallow counts once: live cattle + Darling.")
@@ -449,6 +481,9 @@ with st.expander("Explore the curves point by point"):
         _ex_where = "Upper half of the curve: prices rose faster, and your costs move more."
     else:
         _ex_where = "Bottom half of the curve: prices rose a little less, but your costs move more."
+    if not _ex_is_grey and _ex_i == int(_sh_pick["index"]):
+        _ex_where = ("Sharpe-equivalent: the highest price change per risk on the blue line. Good for an "
+                     "investor, but for you it means more risk and faster-rising prices.")
     if _ex_is_grey and _ex_w[PORTFOLIO_TICKERS.index("DAR")] > 0.995:
         _ex_where = "Right end of the grey line: 100% Darling."
     st.markdown(f"**Where you are:** {_ex_where}")
