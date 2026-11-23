@@ -66,7 +66,10 @@ Your real feedstock prices are not free (companies like Argus and Fastmarkets se
  
 ## What the app shows
  
-- **The efficient frontier**, with and without your rules. The gap is the cost of your rules.
+- **The efficient frontier**, with and without your rules. The **red dot** is our recommendation (the safest mix that follows your rules); the **grey dot** is the safest mix with no rules. The distance between them is the cost of your rules. As a buyer, you don't chase the top of the curve (prices rising faster): we take the leftmost point.
+- **Why is the grey dot calmer than ours?** It concentrates on the calmest feedstock (about two-thirds in live cattle). Your 35% cap trades a little risk for not depending on one supplier. Same idea as the LN5 theorem: σ(minimum variance) ≤ σ(equal risk contribution) ≤ σ(equal weights).
+- **Behind the chart**: the mix at the two dots and at the flat end of the grey line, and each feedstock alone. The flat part is the mix sliding toward 100% Darling: about the same average price change as soybeans, but twice the risk.
+- **Explore the curves point by point**: move a slider along the blue or grey line and see the mix, the risk, the price change per risk and the rule checks at each point. Buttons jump to the red dot or to the **Sharpe-equivalent** point (purple diamond): where the steepest line from zero touches the blue line, the best price change per risk. Good for an investor, not for a buyer.
 - **Our recommended mix** (minimum variance) and the Sharpe-equivalent mix for comparison.
 - **Global minimum variance formula** from the course (no rules, short selling allowed), compared with our mix.
 - **Risk contributions**: which feedstock brings the most risk.
