@@ -308,6 +308,13 @@ st.caption(
     "take the leftmost point of the blue line, where your costs move the least."
 )
 
+st.caption(
+    "**Why is the grey dot calmer than ours?** Diversification lowers risk compared with any single "
+    "feedstock or an equal split. The grey dot is even calmer because it concentrates on the calmest "
+    "feedstock. Your cap trades a little of that for not depending on one supplier: diversification of "
+    "supply, not just of price risk."
+)
+
 # live evidence for the diversification note in the basis-risk expander
 # above -- computed from whatever the app just pulled, so it's an actual
 # measurement rather than a claim the reader has to take on faith. This
