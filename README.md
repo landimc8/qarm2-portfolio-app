@@ -12,7 +12,7 @@ In Rotterdam, you produce renewable diesel and biodiesel (a hypothetical client 
  
 This tool answers one question: **which mix of feedstocks makes your procurement cost move the least, while following your rules?**
  
-Our goal is stable costs. In the financial sector, "stability" is measured by volatility. Because our "returns" are the daily fluctuations in the prices of your feedstocks, lowering portfolio volatility also implies lowering your expenses. We use Markowitz's minimum variance approach.
+Our goal is stable costs. In the financial sector, "stability" is measured by volatility. Because our "returns" are the daily fluctuations in the prices of your feedstocks, lowering portfolio volatility means your expenses move less. We use Markowitz's minimum variance approach.
  
 ## Your needs → our answer
  
@@ -37,7 +37,7 @@ Our goal is stable costs. In the financial sector, "stability" is measured by vo
  
 1. Spend 100% of your budget, with no short selling.
 2. Don't rely too much on one supplier by using no more than 35% of one feedstock. Live cattle (LE=F) and Darling (DAR) together remain below 35% since tallow is considered a single feedstock.
-3. For the EU's RED II biofuel regulations, at least 40% of feedstocks must be waste-based (UCO and animal fat). The sliders allow you to modify the final two rules. A lower cap cannot sum up to 100% when there are four actual feedstocks. The cap cannot go below 25%. The waste share (35% UCO + 35% tallow) cannot exceed 70% with a 35% cap.
+3. For the EU's RED II biofuel regulations, we assume at least 40% of feedstocks are waste-based (UCO and animal fat). The sliders allow you to modify the final two rules. A lower cap cannot sum up to 100% when there are four actual feedstocks. The cap cannot go below 25%. The waste share (35% UCO + 35% tallow) cannot exceed 70% with a 35% cap.
 ## How to use the tool
  
 1. Use the sidebar to set your rules and budget.
@@ -76,7 +76,7 @@ Your real feedstock prices are not free (companies like Argus and Fastmarkets se
 - Your break-even selling price, your expected monthly profit, and the portion of your earnings that each mix could lose in a poor month are all displayed by the Profit-at-Risk calculator. If the market pays less than your expenses, you have three choices: Cut back on manufacturing, sell a better-paid product (UCOME), or lower your costs.
 - Hedging: Use our suggested hedge or decide how much of your margin you want to lock (crop oils with futures, UCO and tallow with forward contracts, selling price with gasoil futures). With the hedge, the futures contracts to purchase, and the tons that remain at market value, it displays your Profit-at-Risk.
 - Two basis-risk checks: the degree to which our proxies replicate actual European pricing.
-- What happens if you alter your regulations? Your daily risk, cost-at-risk, and largest feedstock for further trash minimums and limitations.
+- What happens if you alter your regulations? Your daily risk, cost-at-risk, and largest feedstock for further waste minimums and limitations.
 - Your own data: add your actual pricing (from Argus or your invoices) to obtain the stable-margin mix and the suggested blend.
 - Recommended data sources for the next version of the tool.
 - The crack spread: the difference between diesel and crude oil prices.
@@ -129,7 +129,7 @@ The app then opens in your browser.
  
 ## Before you decide: limits
  
-- Your actual prices are not represented by proxies. Since Rapeseed is the weakest, you should use Euronext futures as a hedge.
+- Proxies are not your real prices. Since Rapeseed is the weakest, you should use Euronext futures as a hedge.
 - The mix does not fix pricing, but it does lessen how much your costs fluctuate. This is the purpose of the hedge, which has its own expenses, such as cash for margin calls, no profit in the event that prices drop, and basis risk (for instance, you purchase rapeseed oil and Euronext rapeseed is a seed).
 - A hedge does not produce a margin; rather, it locks one. A hedge only locks in a loss below your break-even price, which is roughly $1,100 per ton with the settings.
 - The hedge figures are approximations, assuming that each hedge accurately reflects your actual price and that there is around one ton of feedstock for every ton of biodiesel. The precise hedge ratios would be determined by a broker.
