@@ -322,6 +322,60 @@ st.caption(
 )
 
 
+# --- behind the chart: the two dots and the flat part of the grey line -------
+
+with st.expander("Behind the chart: the two dots and the flat part of the grey line"):
+    _short_names = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed (soybeans)", "HO=F": "UCO (diesel)",
+                    "LE=F": "Tallow (live cattle)", "DAR": "Tallow (Darling)"}
+    _uf = unconstrained_frontier
+    _ok_idx = [i for i in range(len(_uf["success"])) if _uf["success"][i]]
+    _mvu = min_variance_portfolio(_uf)
+    _mvc = min_variance_portfolio(constrained_frontier)
+    _le = PORTFOLIO_TICKERS.index("LE=F")
+    _i_end = min(_ok_idx, key=lambda i: _uf["returns"][i])
+    _flat = [i for i in _ok_idx if _uf["returns"][i] < _mvu["return"] and _uf["weights"][i][_le] <= 0.005]
+    _i_corner = max(_flat, key=lambda i: _uf["returns"][i]) if _flat else _i_end
+
+    def _point(w, vol, ret):
+        return [f"{x:.0%}" for x in w] + [f"{vol:.2%}", f"{ret:.3%}"]
+
+    st.markdown("**The mix at four points of the chart:**")
+    st.dataframe(pd.DataFrame({
+        "Red dot: our recommendation": _point(_mvc["weights"], _mvc["volatility"], _mvc["return"]),
+        "Grey dot: safest, no rules": _point(_mvu["weights"], _mvu["volatility"], _mvu["return"]),
+        "On the flat part": _point(_uf["weights"][_i_corner], _uf["volatilities"][_i_corner],
+                                         _uf["returns"][_i_corner]),
+        "Right end of the grey line": _point(_uf["weights"][_i_end], _uf["volatilities"][_i_end],
+                                             _uf["returns"][_i_end]),
+    }, index=[_short_names[t] for t in PORTFOLIO_TICKERS] + ["Daily risk", "Expected daily price change"]))
+
+    st.markdown("**Each feedstock alone:**")
+    st.dataframe(pd.DataFrame({
+        "Daily risk": [f"{np.sqrt(cov_matrix[i, i]):.2%}" for i in range(len(PORTFOLIO_TICKERS))],
+        "Average daily price change": [f"{mean_returns[i]:.3%}" for i in range(len(PORTFOLIO_TICKERS))],
+    }, index=[_short_names[t] for t in PORTFOLIO_TICKERS]))
+
+    _a = int(np.argmax(_uf["weights"][_i_end]))
+    _wc = np.array(_uf["weights"][_i_corner], dtype=float)
+    _wc[_a] = 0.0
+    _b = int(np.argmax(_wc))
+    _prose = {"ZL=F": "soybean oil", "ZS=F": "soybeans (our rapeseed proxy)", "HO=F": "diesel (our UCO proxy)",
+              "LE=F": "live cattle", "DAR": "Darling"}
+    _na, _nb = _prose[PORTFOLIO_TICKERS[_a]], _prose[PORTFOLIO_TICKERS[_b]]
+    _va, _vb = np.sqrt(cov_matrix[_a, _a]), np.sqrt(cov_matrix[_b, _b])
+    st.markdown(
+        f"**The grey dot** puts {_mvu['weights'][_le]:.0%} of your money in live cattle (tallow), the calmest "
+        f"feedstock. Your {concentration_cap:.0%} cap doesn't allow that, which is why the red dot sits further "
+        f"to the right.\n\n"
+        f"**Why the bottom of the grey line is almost flat:** along it, the mix swaps {_nb} for {_na}, until it "
+        f"holds 100% {_na}. On average, their prices rose by almost the same small amount each day "
+        f"({mean_returns[_b]:.3%} and {mean_returns[_a]:.3%}), but {_na} moves {_va / _vb:.1f} times more "
+        f"({_va:.2%} vs {_vb:.2%} a day). So the line goes far to the right (more risk) and only a tiny bit "
+        f"down. The corner is where live cattle leaves the mix. Nobody would choose this part: much more risk "
+        f"for almost nothing. Your cap forbids it, so the blue line stops earlier."
+    )
+
+
 # --- recommended allocation ------------------------------------------------
 
 st.header("Recommended allocation")
