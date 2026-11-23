@@ -300,8 +300,8 @@ ax.legend()
 st.pyplot(fig)
 
 st.caption(
-    "The gap between the grey and blue lines is the cost of your rules: the safest mix you can buy "
-    "moves more each day. At the default settings, the safest mix already holds more than 40% waste, "
+    "The red dot is our recommendation: the safest mix that follows your rules. The grey dot is the "
+    "safest mix with no rules. The distance between them is the cost of your rules. At the default settings, the safest mix already holds more than 40% waste, "
     "so most of this cost comes from the 35% cap per feedstock. For an investor, the upper half of "
     "the curve is efficient. For you, as a buyer, a higher point means prices rising faster, so if "
     "anything the bottom half would be better. But we don't bet on past average price changes: we "
