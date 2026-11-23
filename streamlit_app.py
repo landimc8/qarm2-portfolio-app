@@ -293,8 +293,10 @@ st.pyplot(fig)
 st.caption(
     "The gap between the grey and blue lines is the cost of your rules: the safest mix you can buy "
     "moves more each day. At the default settings, the safest mix already holds more than 40% waste, "
-    "so most of this cost comes from the 35% cap per feedstock. We recommend the leftmost point of "
-    "the blue line: it ignores price forecasts and only minimises how much your costs move."
+    "so most of this cost comes from the 35% cap per feedstock. For an investor, the upper half of "
+    "the curve is efficient. For you, as a buyer, a higher point means prices rising faster, so if "
+    "anything the bottom half would be better. But we don't bet on past average price changes: we "
+    "take the leftmost point of the blue line, where your costs move the least."
 )
 
 # live evidence for the diversification note in the basis-risk expander
