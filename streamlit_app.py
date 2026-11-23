@@ -282,6 +282,15 @@ ax.plot(unconstrained_frontier["volatilities"][valid_u], unconstrained_frontier[
 valid_c = constrained_frontier["success"]
 ax.plot(constrained_frontier["volatilities"][valid_c], constrained_frontier["returns"][valid_c],
         label="Constrained (RED2 + concentration cap)", color="steelblue", linewidth=2)
+_mv_c = min_variance_portfolio(constrained_frontier)
+_mv_u = min_variance_portfolio(unconstrained_frontier)
+ax.scatter([_mv_u["volatility"]], [_mv_u["return"]], color="gray", s=45, zorder=5,
+           label="Safest mix with no rules")
+ax.scatter([_mv_c["volatility"]], [_mv_c["return"]], color="#D62728", s=90, zorder=6, edgecolor="black",
+           label="Our recommendation: safest mix with your rules")
+ax.annotate(f"Our recommendation\n{_mv_c['volatility']:.2%} daily risk",
+            (_mv_c["volatility"], _mv_c["return"]), xytext=(14, 0), textcoords="offset points",
+            fontsize=9, color="#D62728", va="center")
 ax.set_xlabel("Daily cost volatility (how much your costs move each day)")
 ax.set_ylabel("Expected daily price change")
 ax.set_title("Cost of your real-world rules")
