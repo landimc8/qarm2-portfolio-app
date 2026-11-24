@@ -368,7 +368,7 @@ def _x9_mix(years, red, cap, feeds_key=(), goal="minvar"):
             w = np.clip(best.x, 0, None)
             used = "sharpe"
     return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
-            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used}
+            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used, "Ss": S_shrunk}
 
 @st.cache_data(ttl=86400, show_spinner="Building the 15-feedstock frontier...")
 def _x15_frontier(years, red, cap, feeds_key=(), npts=50):
@@ -1056,7 +1056,9 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
         "matters to you. The tool then finds the mix that balances **stable costs** and **staying close to your "
         "benchmark**, always with your three rules."
     )
-    _tk = list(PORTFOLIO_TICKERS)
+    _bm_view = st.radio("Feedstocks the tool can buy:",
+                        ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                        horizontal=True, key="bm15")
     _bm_choice = st.radio("Your benchmark:", ["Your current purchasing mix", "Your selling price (diesel)",
                                              "A greener target mix"], horizontal=True, key="bm_choice")
     if _bm_choice == "Your current purchasing mix":
@@ -1072,16 +1074,18 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
             _bu = _bt = _br = _bs = 25.0
         elif abs(_btot - 100) > 0.5:
             st.warning(f"Your shares add up to {_btot:.0f}%: we rescale them to 100%.")
-        _bmap = {"HO=F": _bu, "LE=F": _bt, "ZS=F": _br, "ZL=F": _bs}
+        _bmap4 = {"HO=F": _bu, "LE=F": _bt, "ZS=F": _br, "ZL=F": _bs}
+        _bmap15 = {"UCO (Rotterdam gasoil)": _bu, "Tallow (live cattle)": _bt, "Rapeseed (Euronext)": _br,
+                   "Soybean oil": _bs}
     elif _bm_choice == "Your selling price (diesel)":
         st.caption("Benchmark: 100% diesel, our proxy for your selling price. Staying close to it keeps your margin steady.")
-        _bmap = {"HO=F": 100.0}
+        _bmap4 = {"HO=F": 100.0}
+        _bmap15 = {"UCO (heating oil)": 100.0}
     else:
         st.caption("Target: 35% UCO, 35% tallow and 30% rapeseed oil: 70% waste and no soybean oil, "
                    "close to the Dutch 2026 rules.")
-        _bmap = {"HO=F": 35.0, "LE=F": 35.0, "ZS=F": 30.0}
-    _b = np.array([_bmap.get(t, 0.0) for t in _tk], dtype=float)
-    _b = _b / _b.sum()
+        _bmap4 = {"HO=F": 35.0, "LE=F": 35.0, "ZS=F": 30.0}
+        _bmap15 = {"UCO (Rotterdam gasoil)": 35.0, "Tallow (live cattle)": 35.0, "Rapeseed (Euronext)": 30.0}
 
     _lam = st.slider("How much does staying close to your benchmark matter to you?", 0, 100, 50, 10,
                      format="%d%%", key="bm_lambda",
@@ -1098,12 +1102,59 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
                          options={"maxiter": 500, "ftol": 1e-12})
         return res.x if res.success else None
 
-    _bcov = np.asarray(cov_matrix)
-    _bn = len(_tk)
-    _bx = _bm_solve(_bcov, _b, _lam, sustainability_min, concentration_cap, _bn)
-    _bx0 = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+    @st.cache_data(show_spinner=False)
+    def _bm_solve15(cov, b, lam, red, cap, waste, tallow):
+        # same objective with 15 feedstocks: tallow proxies share one cap, waste-based share above the minimum
+        n = len(b)
+        cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                {"type": "ineq", "fun": lambda x: x @ waste - red},
+                {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+        res = _bminimize(lambda x: (1 - lam) * (x @ cov @ x) + lam * ((x - b) @ cov @ (x - b)),
+                         np.ones(n) / n, method="SLSQP", bounds=[(0.0, cap)] * n, constraints=cons,
+                         options={"maxiter": 1000, "ftol": 1e-14})
+        return res.x if res.success else None
 
-    if _bx is None:
+    _x15 = None
+    if _bm_view.startswith("Extended"):
+        _x15 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        if _x15 is None or "Ss" not in _x15:
+            st.warning("The 15-feedstock universe could not be built right now. Showing 4 feedstocks.")
+            _x15 = None
+
+    if _x15 is not None:
+        _names = list(_x15["names"])
+        _bcov = np.asarray(_x15["S"]) / 5            # daily risk, measured like the other 15-feedstock views
+        _bopt = np.asarray(_x15["Ss"]) / 5           # shrunk covariance (LN 3) for the optimisation
+        _wv, _tv = np.asarray(_x15["waste"]), np.asarray(_x15["tallow"])
+        _b = np.array([_bmap15.get(k, 0.0) for k in _names], dtype=float)
+        _b = _b / _b.sum()
+
+        def _solve(l):
+            return _bm_solve15(_bopt, _b, l, sustainability_min, concentration_cap, _wv, _tv)
+
+        _bx0 = _solve(0.0)
+        _labels = _names
+        _bwaste = lambda x: float(x @ _wv)
+        _b_tallow = float(_b @ _tv)
+        _b_big = max([_b[i] for i in range(len(_b)) if _tv[i] == 0] + [_b_tallow])
+    else:
+        _tk = list(PORTFOLIO_TICKERS)
+        _bcov = np.asarray(cov_matrix)
+        _b = np.array([_bmap4.get(t, 0.0) for t in _tk], dtype=float)
+        _b = _b / _b.sum()
+
+        def _solve(l):
+            return _bm_solve(_bcov, _b, l, sustainability_min, concentration_cap, len(_tk))
+
+        _bx0 = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+        _labels = [TICKER_LABELS[t] for t in _tk]
+        _bwaste = lambda x: float(sum(x[_tk.index(t)] for t in WASTE_BASED if t in _tk))
+        _b_tallow = _b[_tk.index("LE=F")] + _b[_tk.index("DAR")]
+        _b_big = max([_b[_tk.index(t)] for t in _tk if t not in ("LE=F", "DAR")] + [_b_tallow])
+
+    _bx = _solve(_lam)
+
+    if _bx is None or _bx0 is None:
         st.error("No mix follows your rules here. Try a lower waste minimum or a higher cap.")
     else:
         def _brisk(x):
@@ -1111,9 +1162,6 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
 
         def _bte(x):
             return float(np.sqrt((x - _b) @ _bcov @ (x - _b)))
-
-        def _bwaste(x):
-            return float(sum(x[_tk.index(t)] for t in WASTE_BASED if t in _tk))
 
         def _bcar(x):
             return procurement_budget * _brisk(x) * np.sqrt(21) * 1.645
@@ -1127,17 +1175,14 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
         bm3.metric("Cost-at-Risk (95%, 1 month)", f"${_bcar(_bx):,.0f}")
 
         def _bcol(x, te):
-            return [f"{v:.1%}" for v in x] + [f"{_brisk(x):.2%}", te, f"{_bwaste(x):.0%}"]
+            return [f"{max(v, 0):.1%}" for v in x] + [f"{_brisk(x):.2%}", te, f"{_bwaste(x):.0%}"]
 
         st.dataframe(pd.DataFrame({
             "Your benchmark": _bcol(_b, "0.00%"),
             "Mix for your choice": _bcol(_bx, f"{_bte(_bx):.2%}"),
             "Our main mix (stable costs)": _bcol(_bx0, f"{_bte(_bx0):.2%}"),
-        }, index=[TICKER_LABELS[t] for t in _tk] + ["Daily cost risk", "Distance from your benchmark",
-                                                   "Waste share (RED2)"]))
+        }, index=list(_labels) + ["Daily cost risk", "Distance from your benchmark", "Waste share (RED2)"]))
 
-        _b_tallow = _b[_tk.index("LE=F")] + _b[_tk.index("DAR")]
-        _b_big = max([_b[_tk.index(t)] for t in _tk if t not in ("LE=F", "DAR")] + [_b_tallow])
         _b_broken = []
         if _bwaste(_b) < sustainability_min - 1e-3:
             _b_broken.append(f"waste share {_bwaste(_b):.0%} below your {sustainability_min:.0%} minimum")
@@ -1148,7 +1193,7 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
                     "exactly: it finds the closest mix that follows your rules.")
 
         _bgrid = [i / 10 for i in range(11)]
-        _bpts = [(l, _bm_solve(_bcov, _b, l, sustainability_min, concentration_cap, _bn)) for l in _bgrid]
+        _bpts = [(l, _solve(l)) for l in _bgrid]
         _bpts = [(l, p) for l, p in _bpts if p is not None]
         fig_bm, ax_bm = plt.subplots(figsize=(7, 3.6))
         ax_bm.plot([_bte(p) for _, p in _bpts], [_brisk(p) for _, p in _bpts], marker="o", color="steelblue",
@@ -1163,9 +1208,9 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
         ax_bm.set_ylabel("Daily cost risk")
         ax_bm.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
         ax_bm.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
-        ax_bm.set_title("Your trade-off: stable costs vs staying close to your benchmark")
+        ax_bm.set_title("Your trade-off: stable costs vs staying close to your benchmark"
+                        + (f" ({len(_labels)} feedstocks)" if _x15 is not None else ""))
         ax_bm.legend(fontsize=8)
-        fig_bm.tight_layout()
         st.pyplot(fig_bm)
 
         st.caption(
@@ -1173,6 +1218,9 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
             "toward your benchmark makes your costs move more; staying with our main mix moves you away from "
             "your benchmark. You choose the balance. Method: minimum tracking error (LN 2), combined with minimum "
             "variance: minimize (1 − λ)·xᵀΣx + λ·(x − b)ᵀΣ(x − b), with your three rules."
+            + (" With 15 feedstocks, your benchmark uses the closest series: UCO = Rotterdam gasoil, tallow = live "
+               "cattle, rapeseed oil = Euronext rapeseed, diesel = heating oil; weekly data ÷ 5 and shrinkage "
+               "(LN 3) for the optimisation." if _x15 is not None else "")
         )
 
 
