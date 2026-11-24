@@ -1102,7 +1102,10 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
         sr = d.set_index("Date").sort_index()["Price"].astype(float)
         return sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
 
-    _xbench_name = st.selectbox("Commodity benchmark", list(_XBENCH), key="x_bench")
+    import os as _xos
+    # only offer the benchmarks that this copy of the app can read (the Bloomberg files stay on your laptop)
+    _xbench_ok = [k for k, (src, ref) in _XBENCH.items() if src == "yahoo" or _xos.path.exists(ref)]
+    _xbench_name = st.selectbox("Commodity benchmark", _xbench_ok, key="x_bench")
     _xyahoo = tuple(sorted({v[1] for v in _XFEED.values() if v[0] == "yahoo"}
                           | ({_XBENCH[_xbench_name][1]} if _XBENCH[_xbench_name][0] == "yahoo" else set())))
     _xdl = _x_yahoo(_xyahoo, int(years_lookback))
