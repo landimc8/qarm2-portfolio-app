@@ -1236,15 +1236,40 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
         "with a neutral starting point, and the tool then avoids the feedstocks you expect to get expensive, "
         "always with your three rules."
     )
-    _vtk = list(PORTFOLIO_TICKERS)
-    _vfeed = {"No view": None, "UCO": "HO=F", "Tallow": "LE=F", "Rapeseed oil": "ZS=F", "Soybean oil": "ZL=F"}
+    _v_view = st.radio("Feedstocks the tool can buy:",
+                       ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                       horizontal=True, key="bl15")
+    _x15v = None
+    if _v_view.startswith("Extended"):
+        _x15v = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        if _x15v is None or "Ss" not in _x15v:
+            st.warning("The 15-feedstock universe could not be built right now. Showing 4 feedstocks.")
+            _x15v = None
+
+    if _x15v is not None:
+        _vtk = list(_x15v["names"])
+        _vfeed = {"No view": None,
+                  "UCO": ["UCO (Rotterdam gasoil)", "UCO (heating oil)"],
+                  "Tallow": ["Tallow (live cattle)", "Tallow (Darling)", "Tallow (feeder cattle)"],
+                  "Rapeseed oil": ["Rapeseed (Euronext)"], "Soybean oil": ["Soybean oil"],
+                  "Pork fat / white grease": ["Pork fat / white grease (lean hogs)"], "Canola": ["Canola (ICE)"],
+                  "Palm oil": ["Palm oil (Bursa Malaysia)"], "Corn oil": ["Distillers corn oil (corn)"]}
+        _vfeed = {k: (None if v is None else [t for t in v if t in _vtk]) for k, v in _vfeed.items()}
+        _vfeed = {k: v for k, v in _vfeed.items() if v is None or v}
+        _vsuf = "15"
+    else:
+        _vtk = list(PORTFOLIO_TICKERS)
+        _vfeed = {"No view": None, "UCO": ["HO=F"], "Tallow": ["LE=F", "DAR"], "Rapeseed oil": ["ZS=F"],
+                  "Soybean oil": ["ZL=F"]}
+        _vsuf = ""
+
     _vc1, _vc2 = st.columns(2)
     with _vc1:
-        _v1f = st.selectbox("View 1: feedstock", list(_vfeed), index=1, key="v1_feed")
+        _v1f = st.selectbox("View 1: feedstock", list(_vfeed), index=1, key="v1_feed" + _vsuf)
         _v1q = st.number_input("View 1: expected price change over the next year (%)", -50.0, 50.0, 20.0, 5.0,
                                key="v1_q")
     with _vc2:
-        _v2f = st.selectbox("View 2: feedstock", list(_vfeed), index=0, key="v2_feed")
+        _v2f = st.selectbox("View 2: feedstock", list(_vfeed), index=0, key="v2_feed" + _vsuf)
         _v2q = st.number_input("View 2: expected price change over the next year (%)", -50.0, 50.0, 0.0, 5.0,
                                key="v2_q")
     _vconf = st.slider("How sure are you about your views?", 10, 95, 50, 5, format="%d%%", key="v_conf") / 100
@@ -1252,23 +1277,28 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
                                 ["A little", "Medium", "A lot"], value="Medium", key="v_weight")
     _vgamma = {"A little": 20.0, "Medium": 5.0, "A lot": 2.0}[_vweight]
 
-    _vS = np.asarray(cov_matrix)
     _vn = len(_vtk)
     _vtau = 0.05
+    if _x15v is not None:
+        _vS = np.asarray(_x15v["S"]) / 5        # daily risk, measured like the other 15-feedstock views
+        _vSo = np.asarray(_x15v["Ss"]) / 5      # shrunk covariance (LN 3) for Black-Litterman and the optimisation
+        _vpi = np.full(_vn, float(np.mean(np.asarray(_x15v["mu"]) / 5)))
+    else:
+        _vS = _vSo = np.asarray(cov_matrix)
+        _vpi = np.full(_vn, float(np.mean(np.asarray(mean_returns))))
     # neutral prior: every feedstock is expected to move by the same average amount (no opinion),
     # so with no views the answer is exactly our minimum-variance mix
-    _vpi = np.full(_vn, float(np.mean(np.asarray(mean_returns))))
-    _views = [(_vfeed[f], q) for f, q in ((_v1f, _v1q), (_v2f, _v2q)) if _vfeed[f] is not None]
-    if len({t for t, _ in _views}) < len(_views):
+    _vchosen = [(f, q) for f, q in ((_v1f, _v1q), (_v2f, _v2q)) if _vfeed[f] is not None]
+    if len({f for f, _ in _vchosen}) < len(_vchosen):
         st.warning("Your two views are on the same feedstock: we only use view 1.")
-        _views = _views[:1]
-    _views = [v for t, q in _views for v in ([(t, q), ("DAR", q)] if t == "LE=F" else [(t, q)])]
+        _vchosen = _vchosen[:1]
+    _views = [(t, q) for f, q in _vchosen for t in _vfeed[f]]
     if _views:
         _vP = np.array([np.eye(_vn)[_vtk.index(t)] for t, _ in _views])
         _vQ = np.array([q / 100 / 252 for _, q in _views])
-        _vOm = np.diag(np.diag(_vP @ (_vtau * _vS) @ _vP.T)) * (1 - _vconf) / _vconf
-        _vA = np.linalg.inv(np.linalg.inv(_vtau * _vS) + _vP.T @ np.linalg.inv(_vOm) @ _vP)
-        _vmu = _vA @ (np.linalg.inv(_vtau * _vS) @ _vpi + _vP.T @ np.linalg.inv(_vOm) @ _vQ)
+        _vOm = np.diag(np.diag(_vP @ (_vtau * _vSo) @ _vP.T)) * (1 - _vconf) / _vconf
+        _vA = np.linalg.inv(np.linalg.inv(_vtau * _vSo) + _vP.T @ np.linalg.inv(_vOm) @ _vP)
+        _vmu = _vA @ (np.linalg.inv(_vtau * _vSo) @ _vpi + _vP.T @ np.linalg.inv(_vOm) @ _vQ)
     else:
         _vmu = _vpi.copy()
 
@@ -1281,9 +1311,26 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
                          options={"maxiter": 500, "ftol": 1e-14})
         return res.x if res.success else None
 
-    _vx = _v_solve(_vS, _vmu, _vgamma, sustainability_min, concentration_cap, _vn)
-    _vx0 = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
-    if _vx is None:
+    @st.cache_data(show_spinner=False)
+    def _v_solve15(cov, mu, gamma, red, cap, waste, tallow):
+        n = len(mu)
+        cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                {"type": "ineq", "fun": lambda x: x @ waste - red},
+                {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+        res = _vminimize(lambda x: x @ mu + gamma / 2 * (x @ cov @ x), np.ones(n) / n, method="SLSQP",
+                         bounds=[(0.0, cap)] * n, constraints=cons, options={"maxiter": 1000, "ftol": 1e-15})
+        return res.x if res.success else None
+
+    if _x15v is not None:
+        _vw, _vt = np.asarray(_x15v["waste"]), np.asarray(_x15v["tallow"])
+        _vx = _v_solve15(_vSo, _vmu, _vgamma, sustainability_min, concentration_cap, _vw, _vt)
+        _vx0 = _v_solve15(_vSo, _vpi, _vgamma, sustainability_min, concentration_cap, _vw, _vt)
+        _vlabels = _vtk
+    else:
+        _vx = _v_solve(_vS, _vmu, _vgamma, sustainability_min, concentration_cap, _vn)
+        _vx0 = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+        _vlabels = [TICKER_LABELS[t] for t in _vtk]
+    if _vx is None or _vx0 is None:
         st.error("No mix follows your rules here. Try a lower waste minimum or a higher cap.")
     else:
         def _vrisk(x):
@@ -1303,16 +1350,21 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
         st.dataframe(pd.DataFrame({
             "Neutral expected change (1 year)": [f"{v * 252:+.1%}" for v in _vpi],
             "After your views (1 year)": [f"{v * 252:+.1%}" for v in _vmu],
-            "Our main mix": [f"{v:.1%}" for v in _vx0],
-            "Mix with your views": [f"{v:.1%}" for v in _vx],
-        }, index=[TICKER_LABELS[t] for t in _vtk]))
+            "Our main mix": [f"{max(v, 0):.1%}" for v in _vx0],
+            "Mix with your views": [f"{max(v, 0):.1%}" for v in _vx],
+        }, index=list(_vlabels)))
         st.caption(
             "How it works: we start from a neutral view (every feedstock is expected to move by the same average "
             "amount, so with no views you get our main mix). Black-Litterman then blends in your views, weighted "
             "by how sure you are: μ_BL = [(τΣ)⁻¹ + PᵀΩ⁻¹P]⁻¹ [(τΣ)⁻¹π + PᵀΩ⁻¹Q], with τ = 0.05. A view on one "
             "feedstock also moves the feedstocks that move with it (through the covariance matrix). As a buyer, "
             "we then minimize expected price change + risk. Your rules still hold: for example, the waste "
-            "minimum keeps some UCO even if you expect it to rise. A tallow view applies to both tallow proxies (live cattle and Darling). Views are opinions, not forecasts we make."
+            "minimum keeps some UCO even if you expect it to rise. "
+            + ("With 15 feedstocks, a view applies to every series of that feedstock (UCO: Rotterdam gasoil and "
+               "heating oil; tallow: live cattle, Darling and feeder cattle); weekly data ÷ 5 and shrinkage (LN 3). "
+               if _x15v is not None else
+               "A tallow view applies to both tallow proxies (live cattle and Darling). ")
+            + "Views are opinions, not forecasts we make."
         )
 
 
