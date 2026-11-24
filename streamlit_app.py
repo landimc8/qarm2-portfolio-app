@@ -436,6 +436,9 @@ _X9_FEEDS = {  # name: (source, file or ticker, waste-based?, tallow group?)
     "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
     "UCO (heating oil)": ("yahoo", "HO=F", True, False),
     "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
+    "Neste (company proxy)": ("yahoo", "NESTE.HE", False, False),
+    "Verbio (company proxy)": ("yahoo", "VBK.DE", False, False),
+    "Bunge (company proxy)": ("yahoo", "BG", False, False),
 }
 _X9_SHORT = {
     "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
@@ -443,6 +446,8 @@ _X9_SHORT = {
     "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)", "Canola (ICE)": "Canola\n(ICE)",
     "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)", "Distillers corn oil (corn)": "Corn oil\n(corn)",
     "Soybeans (CBOT)": "Soybeans\n(CBOT)", "UCO (heating oil)": "UCO\n(heat. oil)",
+    "Neste (company proxy)": "Neste\n(stock)", "Verbio (company proxy)": "Verbio\n(stock)",
+    "Bunge (company proxy)": "Bunge\n(stock)",
     "Tallow (feeder cattle)": "Tallow\n(feeder)", "Rapeseed oil (ZCE China)": "Rapes. oil\n(China)",
     "Yellow grease (USDA)": "Yellow\ngrease",
 }
@@ -452,6 +457,7 @@ _X9_COLORS = {
     "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22", "Distillers corn oil (corn)": "#7F8C8D",
     "Soybeans (CBOT)": "#1F4E79", "UCO (heating oil)": "#E74C3C", "Tallow (feeder cattle)": "#5B2C6F",
     "Rapeseed oil (ZCE China)": "#5DADE2", "Yellow grease (USDA)": "#F4D03F",
+    "Neste (company proxy)": "#16A085", "Verbio (company proxy)": "#A3C639", "Bunge (company proxy)": "#B9770E",
 }
 
 
@@ -518,7 +524,7 @@ st.header("Recommended allocation")
 
 _view9 = st.radio(
     "Feedstocks shown here and in risk budgeting:",
-    ["4 feedstocks (main recommendation)", "Extended universe (12 feedstocks)"],
+    ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
     horizontal=True, key="view9",
     help="The 9-feedstock view uses real European prices for UCO and rapeseed, adds canola, palm oil, pork fat "
          "and corn oil, and uses shrinkage (LN 3). Hedging, Black-Litterman and the other boxes stay on 4 feedstocks.",
@@ -553,7 +559,7 @@ if _x9 is not None:
         st.warning("Not available right now (skipped): " + ", ".join(_x9["missing"]) + ".")
     c9a, c9b = st.columns([2, 1])
     with c9a:
-        fig9, ax9 = plt.subplots(figsize=(7, 4))
+        fig9, ax9 = plt.subplots(figsize=(10, 4.6))
         _b9 = ax9.bar([_X9_SHORT.get(k, k) for k in _o9], _w9[_i9], color=[_X9_COLORS.get(k, "#999999") for k in _o9])
         ax9.bar_label(_b9, labels=[f"{v:.1%}" for v in _w9[_i9]], padding=3, fontsize=8)
         ax9.axvline(_nw9 - 0.5, color="gray", linestyle="--", linewidth=1, alpha=0.6)
@@ -659,7 +665,7 @@ st.header("Risk budgeting: where the risk actually comes from")
 
 if _x9 is not None:
     _rc9 = _w9 * (_S9 @ _w9) / (_w9 @ _S9 @ _w9)
-    fig9r, ax9r = plt.subplots(figsize=(7, 4))
+    fig9r, ax9r = plt.subplots(figsize=(10, 4.2))
     _b9r = ax9r.bar([_X9_SHORT.get(k, k) for k in _o9], _rc9[_i9], color=[_X9_COLORS.get(k, "#999999") for k in _o9])
     ax9r.bar_label(_b9r, labels=[f"{v:.1%}" for v in _rc9[_i9]], padding=3, fontsize=8)
     ax9r.set_ylim(min(0.0, float(_rc9.min()) * 1.25), float(_rc9.max()) * 1.25)
@@ -1224,13 +1230,13 @@ with st.expander("Other strategies: minimum CVaR and risk parity (for comparison
     )
 
 
-# --- extended universe: 12 feedstocks, shrinkage (LN 3) and a commodity benchmark -----
+# --- extended universe: 15 feedstocks, shrinkage (LN 3) and a commodity benchmark -----
 
-with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity benchmark"):
+with st.expander("Extended universe: 15 feedstocks, shrinkage and a commodity benchmark"):
     from scipy.optimize import minimize as _xminimize
 
     st.markdown(
-        "A proof-of-concept extension. We widen your feedstock universe from 4 to **12 feedstocks**, use **real "
+        "A proof-of-concept extension. We widen your feedstock universe from 4 to **15 feedstocks**, use **real "
         "exchange prices** for UCO (Rotterdam gasoil), rapeseed (Euronext), canola (ICE) and palm oil (Bursa "
         "Malaysia), and stabilise the covariance "
         "matrix with **shrinkage** (LN 3). Then we compare your mix with a **commodity market benchmark**."
@@ -1250,6 +1256,9 @@ with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity be
         "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
         "UCO (heating oil)": ("yahoo", "HO=F", True, False),
         "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
+        "Neste (company proxy)": ("yahoo", "NESTE.HE", False, False),
+        "Verbio (company proxy)": ("yahoo", "VBK.DE", False, False),
+        "Bunge (company proxy)": ("yahoo", "BG", False, False),
     }
     # benchmark: (source, file or ticker, Yahoo ticker to try when the file is not here)
     _XBENCH = {"Bloomberg Commodity Index (BCOM)": ("csv", "data/bcom.csv", "^BCOM"),
@@ -1382,8 +1391,8 @@ with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity be
                 "history, so the raw covariance matrix is noisy and the optimizer over-trusts small differences. "
                 "Shrinkage (LN 3) blends it with a stable target; the mix with shrinkage is our extended "
                 "recommendation. Waste-based: UCO and animal fats (tallow, pork fat). Corn is a rough proxy for "
-                "distillers corn oil, lean hogs for white grease, feeder cattle and heating oil are extra proxies for tallow and UCO. Prices stay in their own currency: rapeseed in euros, canola in "
-                "Canadian dollars, palm oil in ringgit, the others in dollars. Palm oil is high-ILUC: under "
+                "distillers corn oil, lean hogs for white grease, feeder cattle and heating oil are extra proxies for tallow and UCO. Neste (renewable diesel, a large buyer of UCO and fats), Verbio (biodiesel) and Bunge (oilseed crushing) are company share prices used as proxies: they also move with each company's profits and the stock market, and they never count as waste-based. Prices stay in their own currency: rapeseed in euros, canola in "
+                "Canadian dollars, palm oil in ringgit, Neste and Verbio in euros, the others in dollars. Palm oil is high-ILUC: under "
                 "the Dutch 2026 rules a real buyer could use almost none, so treat its weight as a comparison only. "
                 "Weeks with a rapeseed contract roll are removed."
             )
