@@ -2062,10 +2062,25 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
               help=f"With the {_best}")
     m3.metric("Profit in a bad month", _usd(_profit - _par_best))
 
-    st.dataframe(pd.DataFrame({
+    # the same calculation with the 15-feedstock minimum-variance mix (weekly data ÷ 5 = daily)
+    _x15p = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+    _par15 = None
+    if _x15p is not None and "UCO (heating oil)" in _x15p["names"]:
+        _cov15 = np.asarray(_x15p["S"]) / 5
+        _b15 = np.array([1.0 if k == "UCO (heating oil)" else 0.0 for k in _x15p["names"]])   # diesel
+        _w15 = np.asarray(_x15p["w"])
+
+        def _par15(follows_diesel):
+            d = (_revenue * _share * _b15 if follows_diesel else 0.0) - _feed * _w15
+            return float(np.sqrt(d @ _cov15 @ d) * np.sqrt(_h) * _z)
+
+    _cols = {
         "Main mix (stable costs)": [f"${_par(_w_main, False):,.0f}", f"${_par(_w_main, True):,.0f}"],
         "Stable-margin mix": [f"${_par(_w_margin, False):,.0f}", f"${_par(_w_margin, True):,.0f}"],
-    }, index=["Fixed selling price", "Selling price follows diesel"]))
+    }
+    if _par15 is not None:
+        _cols["Extended mix (15 feedstocks)"] = [f"${_par15(False):,.0f}", f"${_par15(True):,.0f}"]
+    st.dataframe(pd.DataFrame(_cols, index=["Fixed selling price", "Selling price follows diesel"]))
 
     st.markdown(
         f"Because your {'selling price follows diesel' if _follows else 'selling price is fixed'}, "
@@ -2073,6 +2088,13 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
         f"in a bad month, it could lose about **{_usd(_par_best)}** of its **{_usd(_profit)}** profit. "
         f"The other mix would put **{_usd(abs(_par_main - _par_margin))} more** at risk.".replace("$", "\\$")
     )
+    if _par15 is not None:
+        _p15 = _par15(_follows)
+        st.markdown(
+            f"**With the extended universe (15 feedstocks)**, the same Profit-at-Risk would be about "
+            f"**{_usd(_p15)}**, so your profit in a bad month would be about **{_usd(_profit - _p15)}** instead of "
+            f"{_usd(_profit - _par_main)} with the main mix.".replace("$", "\\$")
+        )
     if _follows and _par_margin < _par_main:
         st.info("On our free data, the stable-margin mix looks better here, but the gain is overstated: diesel "
                 "(HO=F) is both our UCO proxy and your selling price. Our recommendation stays the stable-cost "
@@ -2103,7 +2125,8 @@ with st.expander("Profit-at-Risk calculator: how much profit could you lose?"):
         "Cost-at-Risk (normal returns, not from the course). Selling price, tonnes and other costs are your "
         "inputs; only the risks come from the model. Two limits: the feedstock bill is the budget in the "
         "sidebar, so keep it consistent with your tonnes; and diesel (HO=F) is both our UCO proxy and the "
-        "selling price, so the stable-margin gain looks larger than with real prices."
+        "selling price, so the stable-margin gain looks larger than with real prices. The 15-feedstock column uses "
+        "weekly prices (risk ÷ √5 for daily) and heating oil as the diesel price."
     )
 
 
