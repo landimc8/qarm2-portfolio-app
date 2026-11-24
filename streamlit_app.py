@@ -1072,10 +1072,11 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
         "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
         "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
     }
-    _XBENCH = {"Bloomberg Commodity Index (BCOM)": ("csv", "data/bcom.csv"),
-               "Bloomberg Agriculture Index (BCOMAG)": ("csv", "data/bcomag.csv"),
-               "Agriculture basket ETF (DBA)": ("yahoo", "DBA"),
-               "Broad commodities ETF (S&P GSCI, GSG)": ("yahoo", "GSG")}
+    # benchmark: (source, file or ticker, Yahoo ticker to try when the file is not here)
+    _XBENCH = {"Bloomberg Commodity Index (BCOM)": ("csv", "data/bcom.csv", "^BCOM"),
+               "Bloomberg Agriculture Index (BCOMAG)": ("csv", "data/bcomag.csv", "^BCOMAG"),
+               "Agriculture basket ETF (DBA)": ("yahoo", "DBA", None),
+               "Broad commodities ETF (S&P GSCI, GSG)": ("yahoo", "GSG", None)}
 
     @st.cache_data(ttl=86400, show_spinner="Downloading the extra prices...")
     def _x_yahoo(tickers, years):
@@ -1103,12 +1104,22 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
         return sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
 
     import os as _xos
-    # only offer the benchmarks that this copy of the app can read (the Bloomberg files stay on your laptop)
-    _xbench_ok = [k for k, (src, ref) in _XBENCH.items() if src == "yahoo" or _xos.path.exists(ref)]
-    _xbench_name = st.selectbox("Commodity benchmark", _xbench_ok, key="x_bench")
+
+    def _xb_where(k):
+        # ("csv", path) if the file is here, ("yahoo", ticker) otherwise, None if there is no source
+        src, ref, backup = _XBENCH[k]
+        if src == "csv" and _xos.path.exists(ref):
+            return ("csv", ref)
+        if src == "yahoo":
+            return ("yahoo", ref)
+        return ("yahoo", backup) if backup else None
+
     _xyahoo = tuple(sorted({v[1] for v in _XFEED.values() if v[0] == "yahoo"}
-                          | ({_XBENCH[_xbench_name][1]} if _XBENCH[_xbench_name][0] == "yahoo" else set())))
+                          | {w[1] for w in map(_xb_where, _XBENCH) if w and w[0] == "yahoo"}))
     _xdl = _x_yahoo(_xyahoo, int(years_lookback))
+    # only offer the benchmarks this copy of the app can read: your files first, Yahoo when a file is missing
+    _xbench_ok = [k for k in _XBENCH if _xb_where(k) and (_xb_where(k)[0] == "csv" or _xb_where(k)[1] in _xdl)]
+    _xbench_name = st.selectbox("Commodity benchmark", _xbench_ok, key="x_bench")
 
     _xprices, _xmissing = {}, []
     for _name, (_src, _ref, _w, _tg) in _XFEED.items():
@@ -1120,7 +1131,7 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
             _xmissing.append(_name)
         else:
             _xprices[_name] = _sr
-    _xbsrc, _xbref = _XBENCH[_xbench_name]
+    _xbsrc, _xbref = _xb_where(_xbench_name)
     try:
         _xb_ser = _x_csv(_xbref, int(years_lookback)) if _xbsrc == "csv" else _xdl.get(_xbref)
     except FileNotFoundError:
