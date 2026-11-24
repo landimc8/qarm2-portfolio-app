@@ -1989,7 +1989,8 @@ with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Eur
         "Soybean oil (ZL=F) follows rapeseed a little better than soybeans. "
         "Euronext rapeseed is the seed and you buy rapeseed oil, so a small seed-vs-oil gap remains. "
         "For your rapeseed, we recommend hedging with the Euronext contract directly. "
-        "Source: Euronext rapeseed futures (COMc1), Investing.com."
+        "This is why the extended universe (15 feedstocks) uses the real Euronext rapeseed price instead of this "
+        "proxy. Source: Euronext rapeseed futures (COMc1), Investing.com."
     )
 
 
