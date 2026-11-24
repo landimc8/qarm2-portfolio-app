@@ -230,32 +230,6 @@ with st.expander("Data provenance -- where this comes from, exactly"):
     prov_df["last_date"] = pd.to_datetime(prov_df["last_date"]).dt.date
     st.dataframe(prov_df)
 
-with st.expander("Crack spread diagnostic (HO=F x 42 minus CL=F, $/bbl)"):
-    st.markdown(
-        "This chart shows the gap between the diesel price and the crude oil price: "
-        "how much a refinery earns per barrel. We use diesel (HO=F) as the proxy for "
-        "used cooking oil, because fuel made from UCO is sold in the same market as diesel. "
-        "When this gap is large, diesel is expensive, and used cooking oil often gets "
-        "more expensive too. For you, this matters because your biodiesel selling price "
-        "often follows diesel. **Crude oil (CL=F) is only used for this chart. It is not "
-        "part of the portfolio.**"
-    )
-    cleaned_for_spread = clean_prices(raw_prices)
-    crack_spread = compute_crack_spread(cleaned_for_spread)
-    diesel_bbl = cleaned_for_spread["HO=F"] * 42      # $/gal -> $/bbl
-    crude_bbl = cleaned_for_spread["CL=F"]
-    fig_spread, (ax_px, ax_spread) = plt.subplots(2, 1, figsize=(9, 5), sharex=True,
-                                                  gridspec_kw={"height_ratios": [2, 1]})
-    ax_px.plot(diesel_bbl.index, diesel_bbl.values, color="#eb6834", linewidth=1, label="Diesel (HO=F x 42)")
-    ax_px.plot(crude_bbl.index, crude_bbl.values, color="#2a78d6", linewidth=1, linestyle="--",
-               label="WTI crude (CL=F)")
-    ax_px.set_ylabel("$ per barrel")
-    ax_px.set_title("Diesel and crude prices, and the crack spread between them")
-    ax_px.legend()
-    ax_spread.plot(crack_spread.index, crack_spread.values, color="#555555", linewidth=1)
-    ax_spread.set_ylabel("Crack ($/bbl)")
-    st.pyplot(fig_spread)
-
 constrained_frontier = load_constrained_frontier(
     mean_returns, cov_matrix, sustainability_min, concentration_cap, n_frontier_points
 )
@@ -327,60 +301,6 @@ st.caption(
     f"Both come from the Chicago soybean market, so our two crop feedstocks are less "
     f"diversified than planned. This number updates when you change the years slider."
 )
-
-
-# --- behind the chart: the two dots and the flat part of the grey line -------
-
-with st.expander("Behind the chart: the two dots and the flat part of the grey line"):
-    _short_names = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed (soybeans)", "HO=F": "UCO (diesel)",
-                    "LE=F": "Tallow (live cattle)", "DAR": "Tallow (Darling)"}
-    _uf = unconstrained_frontier
-    _ok_idx = [i for i in range(len(_uf["success"])) if _uf["success"][i]]
-    _mvu = min_variance_portfolio(_uf)
-    _mvc = min_variance_portfolio(constrained_frontier)
-    _le = PORTFOLIO_TICKERS.index("LE=F")
-    _i_end = min(_ok_idx, key=lambda i: _uf["returns"][i])
-    _flat = [i for i in _ok_idx if _uf["returns"][i] < _mvu["return"] and _uf["weights"][i][_le] <= 0.005]
-    _i_corner = max(_flat, key=lambda i: _uf["returns"][i]) if _flat else _i_end
-
-    def _point(w, vol, ret):
-        return [f"{x:.0%}" for x in w] + [f"{vol:.2%}", f"{ret:.3%}"]
-
-    st.markdown("**The mix at four points of the chart:**")
-    st.dataframe(pd.DataFrame({
-        "Red dot: our recommendation": _point(_mvc["weights"], _mvc["volatility"], _mvc["return"]),
-        "Grey dot: safest, no rules": _point(_mvu["weights"], _mvu["volatility"], _mvu["return"]),
-        "On the flat part": _point(_uf["weights"][_i_corner], _uf["volatilities"][_i_corner],
-                                         _uf["returns"][_i_corner]),
-        "Right end of the grey line": _point(_uf["weights"][_i_end], _uf["volatilities"][_i_end],
-                                             _uf["returns"][_i_end]),
-    }, index=[_short_names[t] for t in PORTFOLIO_TICKERS] + ["Daily risk", "Expected daily price change"]))
-
-    st.markdown("**Each feedstock alone:**")
-    st.dataframe(pd.DataFrame({
-        "Daily risk": [f"{np.sqrt(cov_matrix[i, i]):.2%}" for i in range(len(PORTFOLIO_TICKERS))],
-        "Average daily price change": [f"{mean_returns[i]:.3%}" for i in range(len(PORTFOLIO_TICKERS))],
-    }, index=[_short_names[t] for t in PORTFOLIO_TICKERS]))
-
-    _a = int(np.argmax(_uf["weights"][_i_end]))
-    _wc = np.array(_uf["weights"][_i_corner], dtype=float)
-    _wc[_a] = 0.0
-    _b = int(np.argmax(_wc))
-    _prose = {"ZL=F": "soybean oil", "ZS=F": "soybeans (our rapeseed proxy)", "HO=F": "diesel (our UCO proxy)",
-              "LE=F": "live cattle", "DAR": "Darling"}
-    _na, _nb = _prose[PORTFOLIO_TICKERS[_a]], _prose[PORTFOLIO_TICKERS[_b]]
-    _va, _vb = np.sqrt(cov_matrix[_a, _a]), np.sqrt(cov_matrix[_b, _b])
-    st.markdown(
-        f"**The grey dot** puts {_mvu['weights'][_le]:.0%} of your money in live cattle (tallow), the calmest "
-        f"feedstock. Your {concentration_cap:.0%} cap doesn't allow that, which is why the red dot sits further "
-        f"to the right.\n\n"
-        f"**Why the bottom of the grey line is almost flat:** along it, the mix swaps {_nb} for {_na}, until it "
-        f"holds 100% {_na}. On average, their prices rose by almost the same small amount each day "
-        f"({mean_returns[_b]:.3%} and {mean_returns[_a]:.3%}), but {_na} moves {_va / _vb:.1f} times more "
-        f"({_va:.2%} vs {_vb:.2%} a day). So the line goes far to the right (more risk) and only a tiny bit "
-        f"down. The corner is where live cattle leaves the mix. Nobody would choose this part: much more risk "
-        f"for almost nothing. Your cap forbids it, so the blue line stops earlier."
-    )
 
 
 # --- explore the curves point by point -----------------------------------------
@@ -610,17 +530,6 @@ st.caption(
 )
 
 
-# --- raw numbers, for anyone checking the math -----------------------------
-
-with st.expander("Exact numbers: share of budget and share of risk"):
-    st.dataframe(pd.DataFrame({
-        "Code": PORTFOLIO_TICKERS,
-        "Share of budget": [f"{w:.2%}" for w in weights],
-        "Share of risk": [f"{r:.2%}" for r in rc],
-        "Type": ["Waste-based (RED2)" if t in WASTE_BASED else "Crop-based" for t in PORTFOLIO_TICKERS],
-    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS]))
-
-
 # --- global minimum variance (LN1 closed form, no client rules) -------------
 
 with st.expander("Compare: global minimum variance (no rules) vs our recommended mix"):
@@ -748,60 +657,6 @@ with st.expander("Why we recommend minimum variance (not Sharpe)"):
         f"and it picks the feedstocks whose prices rose fastest in the past "
         f"({(1 + sr_pick['return']) ** 252 - 1:+.1%} a year vs {(1 + mv_pick['return']) ** 252 - 1:+.1%}). "
         f"That is why we recommend minimum variance: stable costs are the right goal for a buyer."
-    )
-
-
-# --- stable margin: minimize tracking error vs the selling price (LN2) -------
-
-with st.expander("Stable costs or stable margin? (tracking error vs diesel)"):
-    from scipy.optimize import minimize as _minimize
-    from constraints import build_all_constraints as _bac, get_bounds as _gb
-
-    # Benchmark b = 100% diesel (HO=F): our proxy for the biodiesel selling price
-    b = np.array([1.0 if t == "HO=F" else 0.0 for t in PORTFOLIO_TICKERS])
-
-    def _margin_var(x):
-        d = x - b
-        return d @ cov_matrix @ d          # (x - b)' Sigma (x - b) = variance of the margin
-
-    _res = _minimize(
-        _margin_var, np.ones(len(PORTFOLIO_TICKERS)) / len(PORTFOLIO_TICKERS),
-        method="SLSQP",
-        bounds=_gb(concentration_cap=concentration_cap, n_assets=len(PORTFOLIO_TICKERS)),
-        constraints=_bac(sustainability_min=sustainability_min, concentration_cap=concentration_cap),
-        options={"maxiter": 500, "ftol": 1e-12},
-    )
-    w_margin = _res.x
-    w_cost = min_variance_portfolio(constrained_frontier)["weights"]
-
-    def _cost_risk(x):
-        return np.sqrt(x @ cov_matrix @ x)
-
-    def _margin_risk(x):
-        return np.sqrt(_margin_var(x))
-
-    st.markdown(
-        "If you sell your biodiesel at a price linked to diesel, your **margin** is roughly "
-        "*selling price change − feedstock cost change*. Minimizing the variance of the margin is "
-        "the same as minimizing the **tracking error** against a benchmark *b* = 100% diesel: "
-        "$\\min_x \\,(x-b)^\\top\\Sigma\\,(x-b)$, with the same three rules."
-    )
-    st.dataframe(pd.DataFrame({
-        "Stable costs (our recommendation)": [f"{w:.1%}" for w in w_cost]
-            + [f"{_cost_risk(w_cost):.2%}", f"{_margin_risk(w_cost):.2%}", f"{sustainability_share(w_cost):.0%}"],
-        "Stable margin (tracking error vs diesel)": [f"{w:.1%}" for w in w_margin]
-            + [f"{_cost_risk(w_margin):.2%}", f"{_margin_risk(w_margin):.2%}", f"{sustainability_share(w_margin):.0%}"],
-    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS] + ["Daily cost risk", "Daily margin risk", "Waste share (RED2)"]))
-    st.caption(
-        f"With the stable-margin mix, your margin moves {1 - _margin_risk(w_margin) / _margin_risk(w_cost):.0%} less, "
-        f"but your costs move {_cost_risk(w_margin) / _cost_risk(w_cost) - 1:.0%} more. "
-        "The stable-margin mix buys more diesel-linked UCO and soybean oil, because their costs move with "
-        "the selling price. Limit: here diesel (HO=F) is "
-        "both our UCO proxy and the selling price, so the gain looks larger than it really is. European "
-        "biodiesel follows Rotterdam gasoil; we use HO=F as a free proxy. **Our recommendation stays the "
-        "stable-cost mix.** When we tested real market prices, the margin was only about 5% calmer. So if "
-        "your selling price follows diesel, we recommend keeping our mix and hedging your selling price "
-        "with gasoil futures. You can check the gain on your own prices in the 'Your own data' box."
     )
 
 
@@ -974,6 +829,7 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
     if len({t for t, _ in _views}) < len(_views):
         st.warning("Your two views are on the same feedstock: we only use view 1.")
         _views = _views[:1]
+    _views = [v for t, q in _views for v in ([(t, q), ("DAR", q)] if t == "LE=F" else [(t, q)])]
     if _views:
         _vP = np.array([np.eye(_vn)[_vtk.index(t)] for t, _ in _views])
         _vQ = np.array([q / 100 / 252 for _, q in _views])
@@ -1023,7 +879,7 @@ with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
             "by how sure you are: μ_BL = [(τΣ)⁻¹ + PᵀΩ⁻¹P]⁻¹ [(τΣ)⁻¹π + PᵀΩ⁻¹Q], with τ = 0.05. A view on one "
             "feedstock also moves the feedstocks that move with it (through the covariance matrix). As a buyer, "
             "we then minimize expected price change + risk. Your rules still hold: for example, the waste "
-            "minimum keeps some UCO even if you expect it to rise. Views are opinions, not forecasts we make."
+            "minimum keeps some UCO even if you expect it to rise. A tallow view applies to both tallow proxies (live cattle and Darling). Views are opinions, not forecasts we make."
         )
 
 
