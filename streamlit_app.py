@@ -201,11 +201,13 @@ with st.expander("Data provenance -- where this comes from, exactly"):
         All portfolio prices come from **Yahoo Finance**, pulled through the
         [`yfinance`](https://pypi.org/project/yfinance/) Python library --
         this mirrors Yahoo's own end-of-day data rather than a separate
-        paid vendor. There are two exceptions, both used only in the
-        basis-risk checks at the bottom: the Rotterdam gasoil price and the
-        Euronext rapeseed price, which come from Investing.com (Yahoo does
-        not carry them). If you upload your own prices in the sidebar, they
-        are used only in the "Your own data" box.
+        paid vendor. The exceptions come from Investing.com files (Yahoo does
+        not carry them): the Rotterdam gasoil and Euronext rapeseed prices
+        (basis-risk checks and extended universe), ICE canola and Bursa
+        Malaysia palm oil (extended universe), and the Bloomberg Commodity and
+        Bloomberg Agriculture indexes (benchmarks; downloaded from Yahoo when
+        the files are missing). If you upload your own prices in the sidebar,
+        they are used only in the "Your own data" box.
 
         - **Price field:** `Close`, with `auto_adjust=True` -- Yahoo's
           *adjusted* close (splits/dividends folded in), not the raw print.
@@ -223,6 +225,13 @@ with st.expander("Data provenance -- where this comes from, exactly"):
           for whichever ticker was closed instead, which registers as a
           zero return for that ticker on that day rather than removing
           the day from the dataset.
+        - **CL=F (crude oil):** still downloaded with the others, but no
+          longer used (the crack spread box was removed).
+        - **Extended universe (15 feedstocks):** weekly prices (Friday
+          close), so that different exchange holidays and monthly contract
+          rolls do not create false jumps; weeks with a Euronext rapeseed
+          roll are removed. Each price stays in its own currency (EUR, CAD,
+          MYR, USD). The table below covers the main 4-feedstock data only.
         """
     )
     prov_df = pd.DataFrame(provenance).T
