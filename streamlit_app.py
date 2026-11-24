@@ -2247,14 +2247,19 @@ with st.expander("Recommended data sources (next version of your tool)"):
             "ICE (gasoil, FAME 0°), CBOT (soybean oil), Euronext (rapeseed), your suppliers (UCO, tallow)",
             "Nabisy",
             "EIA, IEA, JODI (oil and diesel), USDA (oilseeds)",
+            "USDA AMS Market News (free)",
+            "TradingView (paid plan) or the exchanges",
         ],
         "What it replaces or adds in the tool": [
-            "Replaces our proxies (HO=F, LE=F, DAR, ZS=F), so most of the basis risk disappears",
+            "Replaces our proxies (HO=F, LE=F, DAR, ZS=F, and the cattle, hog, corn and company proxies of the "
+            "extended universe), so most of the basis risk disappears",
             "Replaces diesel (HO=F) in the stable-margin mix, and gives the real selling price for the Profit-at-Risk calculator and your break-even",
             "Replaces our assumed 40% RED2 minimum with the real mandate level",
             "With your real prices, turns our rough contract numbers in the hedging box into exact hedge ratios",
             "Confirms which volumes count as waste-based for RED2",
             "Helps you decide when and how much to hedge (supply, demand, stocks)",
+            "Replaces the cattle, hog and corn proxies; free history only since end-2022",
+            "More real vegetable-oil prices for the extended universe",
         ],
     }, index=[
         "Your feedstock prices (UCO, tallow, rapeseed oil, soybean oil)",
@@ -2263,6 +2268,8 @@ with st.expander("Recommended data sources (next version of your tool)"):
         "Futures for the hedge",
         "Sustainability proofs",
         "Market fundamentals",
+        "Real US prices of yellow grease, tallow, white grease and corn oil",
+        "Chinese rapeseed oil (ZCE) and European rapeseed oil (CBOT, Argus)",
     ]))
     st.markdown(
         "**Links:** "
@@ -2275,7 +2282,8 @@ with st.expander("Recommended data sources (next version of your tool)"):
         "[EIA](https://www.eia.gov) · "
         "[IEA](https://www.iea.org) · "
         "[JODI](https://www.jodidata.org) · "
-        "[USDA FAS](https://fas.usda.gov)"
+        "[USDA FAS](https://fas.usda.gov) · "
+        "[USDA AMS Market News](https://mymarketnews.ams.usda.gov)"
     )
     st.caption(
         "Prices (Argus and the exchanges) go into the model. Fundamentals (EIA, IEA, JODI, USDA) and "
