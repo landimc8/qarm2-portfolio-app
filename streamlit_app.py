@@ -1578,29 +1578,51 @@ with st.expander("Backtest: does our strategy work on prices it has not seen?"):
 
 with st.expander("Other strategies: minimum CVaR and risk parity (for comparison)"):
     from scipy.optimize import minimize as _cminimize, linprog as _clinprog
-    from constraints import get_bounds as _cgb, build_all_constraints as _cbac
 
     st.markdown(
         "Two well-known alternatives, with your same three rules. **Minimum CVaR** protects you against the "
-        "worst days (crises like 2022) instead of average swings. **Risk parity** (equal risk contribution, "
-        "LN 5) makes each feedstock bring the same share of your risk."
+        "worst days (crises like 2022) instead of average swings. **Risk parity** (equal risk contribution) "
+        "makes each feedstock bring the same share of your risk."
     )
-    _ctk = list(PORTFOLIO_TICKERS)
-    _cn = len(_ctk)
-    _cR = returns[PORTFOLIO_TICKERS].values
-    _cS = np.asarray(cov_matrix)
+    _cs_view = st.radio("Feedstocks the tool can buy:",
+                        ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                        horizontal=True, key="cs15")
+    _x15c = None
+    if _cs_view.startswith("Extended"):
+        _x15c = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        if _x15c is None or "r" not in _x15c:
+            st.warning("The 15-feedstock universe could not be built right now. Showing 4 feedstocks.")
+            _x15c = None
     _cbeta = 0.95
 
+    if _x15c is not None:
+        _cnames = list(_x15c["names"])
+        _cR = _x15c["r"].values                  # weekly returns
+        _cS = np.asarray(_x15c["S"])             # weekly covariance
+        _cwaste, _ctallow = np.asarray(_x15c["waste"]), np.asarray(_x15c["tallow"])
+        _cmv = np.asarray(_x15c["w"])
+        _clabels = _cnames
+        _cper, _cscale = "week", 5.0
+        _crp_free = list(range(len(_cnames)))   # every feedstock gets the same share of risk
+    else:
+        _ctk = list(PORTFOLIO_TICKERS)
+        _cR = returns[PORTFOLIO_TICKERS].values
+        _cS = np.asarray(cov_matrix)
+        _cwaste = np.array([1.0 if t in WASTE_BASED else 0.0 for t in _ctk])
+        _ctallow = np.array([1.0 if t in ("LE=F", "DAR") else 0.0 for t in _ctk])
+        _cmv = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+        _clabels = [TICKER_LABELS[t] for t in _ctk]
+        _cper, _cscale = "day", 1.0
+        _crp_free = [i for i, t in enumerate(_ctk) if t != "DAR"]   # Darling kept at 0 (tallow = live cattle)
+    _cn = len(_clabels)
+
     @st.cache_data(show_spinner="Solving minimum CVaR...")
-    def _c_min_cvar(R, red, cap, beta):
+    def _c_min_cvar(R, red, cap, beta, waste, tallow):
         # Rockafellar-Uryasev linear program; loss = cost increase = x'r (a buyer loses when prices rise)
         T, n = R.shape
-        tk = list(PORTFOLIO_TICKERS)
         c = np.concatenate([np.zeros(n), [1.0], np.full(T, 1.0 / ((1 - beta) * T))])
         A_ub = np.hstack([R, -np.ones((T, 1)), -np.eye(T)])
         b_ub = np.zeros(T)
-        waste = np.array([1.0 if t in WASTE_BASED else 0.0 for t in tk])
-        tallow = np.array([1.0 if t in ("LE=F", "DAR") else 0.0 for t in tk])
         A_ub = np.vstack([A_ub, np.concatenate([-waste, [0.0], np.zeros(T)]),
                           np.concatenate([tallow, [0.0], np.zeros(T)])])
         b_ub = np.concatenate([b_ub, [-red, cap]])
@@ -1610,52 +1632,75 @@ with st.expander("Other strategies: minimum CVaR and risk parity (for comparison
         return res.x[:n] if res.success else None
 
     @st.cache_data(show_spinner="Solving risk parity...")
-    def _c_erc(cov, red, cap):
-        # equal risk contribution among the 4 real feedstocks (Darling kept at 0), with your rules
-        tk = list(PORTFOLIO_TICKERS)
-        n = len(tk)
-        live = [i for i, t in enumerate(tk) if t != "DAR"]
+    def _c_erc(cov, red, cap, waste, tallow, live):
+        # equal risk contribution among the chosen feedstocks, with your rules
+        n = cov.shape[0]
+        live = list(live)
 
         def obj(x):
             v = x @ cov @ x
             rc = x * (cov @ x) / v
             return float(sum((rc[i] - 1 / len(live)) ** 2 for i in live))
-        bnds = [(0.0, 0.0) if t == "DAR" else (0.01, cap) for t in tk]
-        x0 = np.array([0.0 if t == "DAR" else 1 / len(live) for t in tk])
-        res = _cminimize(obj, x0, method="SLSQP", bounds=bnds,
-                         constraints=_cbac(sustainability_min=red, concentration_cap=cap),
-                         options={"maxiter": 1000, "ftol": 1e-14})
-        return res.x if res.success else None
+        bnds = [(0.002, cap) if i in live else (0.0, 0.0) for i in range(n)]
+        x0 = np.array([1 / len(live) if i in live else 0.0 for i in range(n)])
+        cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                {"type": "ineq", "fun": lambda x: x @ waste - red},
+                {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+        res = _cminimize(obj, x0, method="SLSQP", bounds=bnds, constraints=cons,
+                         options={"maxiter": 2000, "ftol": 1e-14})
+        x = res.x
+        ok = abs(x.sum() - 1) < 1e-4 and x @ waste >= red - 1e-4 and x @ tallow <= cap + 1e-4
+        return x if (res.success or ok) else None
 
-    _cmv = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
-    _ccv = _c_min_cvar(_cR, sustainability_min, concentration_cap, _cbeta)
-    _crp = _c_erc(_cS, sustainability_min, concentration_cap)
-    _ceq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in _ctk])
+    _ccv = _c_min_cvar(_cR, float(sustainability_min), float(concentration_cap), _cbeta, _cwaste, _ctallow)
+    _crp = _c_erc(_cS, float(sustainability_min), float(concentration_cap), _cwaste, _ctallow, tuple(_crp_free))
+    if _x15c is not None:
+        _ceq = np.ones(_cn) / _cn
+        _ceq_name = f"Equal split (1/{_cn} each)"
+    else:
+        _ceq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in _ctk])
+        _ceq_name = "Equal split"
 
     def _c_stats(x):
         if x is None:
             return ["—"] * (_cn + 4)
+        x = np.clip(x, 0, None)
         pnl = _cR @ x
         var = np.quantile(pnl, _cbeta)
         cvar = pnl[pnl >= var].mean()
         rc = x * (_cS @ x) / (x @ _cS @ x)
-        return ([f"{max(v, 0.0):.1%}" for v in x] + [f"{np.sqrt(x @ _cS @ x):.2%}", f"{cvar:.2%}",
+        return ([f"{v:.1%}" for v in x] + [f"{np.sqrt(x @ _cS @ x / _cscale):.2%}", f"{cvar:.2%}",
                 f"${procurement_budget * cvar:,.0f}", f"{rc.max():.0%}"])
 
     st.dataframe(pd.DataFrame({
         "Minimum variance (ours)": _c_stats(_cmv),
         "Minimum CVaR": _c_stats(_ccv),
         "Risk parity": _c_stats(_crp),
-        "Equal split": _c_stats(_ceq),
-    }, index=[TICKER_LABELS[t] for t in _ctk] + ["Daily cost risk", "CVaR 95% (average of the worst 5% days)",
-                                                "CVaR in money (1 bad day)", "Largest risk contribution"]))
+        _ceq_name: _c_stats(_ceq),
+    }, index=list(_clabels) + ["Daily cost risk", f"CVaR 95% (average of the worst 5% {_cper}s)",
+                               f"CVaR in money (1 bad {_cper})", "Largest risk contribution"]))
+
+    def _cv(x):
+        x = np.clip(x, 0, None)
+        return float(np.sqrt(x @ _cS @ x / _cscale))
+
+    _cok = _ccv is not None and _crp is not None
+    if _cok:
+        _cmsg = (f"Daily risk: minimum variance {_cv(_cmv):.2%}, minimum CVaR {_cv(_ccv):.2%}, risk parity "
+                 f"{_cv(_crp):.2%}, equal split {_cv(_ceq):.2%}. ")
+    else:
+        _cmsg = ""
     st.caption(
-        "CVaR 95% = the average cost increase on the worst 5% of days (historical, no normal assumption), "
-        "minimized with the Rockafellar-Uryasev linear program. Risk parity gives each real feedstock the same "
-        "share of risk (Darling kept at 0, as tallow is already covered by live cattle). As in LN 5, minimum "
-        "variance has the lowest daily risk, risk parity sits between it and the equal split. We keep minimum "
-        "variance as our recommendation: these two strategies don't use any input from you, and on your data "
-        "they give similar or higher risk."
+        f"CVaR 95% = the average cost increase on the worst 5% of {_cper}s (historical, no normal assumption), "
+        "minimized with the Rockafellar-Uryasev linear program. "
+        + ("Risk parity gives every feedstock the same share of risk; weekly prices, risk ÷ √5 for daily numbers. "
+           if _x15c is not None else
+           "Risk parity gives each real feedstock the same share of risk (Darling kept at 0, as tallow is already "
+           "covered by live cattle). ")
+        + _cmsg
+        + "Minimum variance has the lowest daily risk by definition; risk parity sits between it and the equal "
+        "split. We keep minimum variance as our recommendation: these two strategies don't use any input from "
+        "you, and on your data they give similar or higher risk."
     )
 
 
