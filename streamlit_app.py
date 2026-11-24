@@ -456,7 +456,7 @@ _X9_COLORS = {
 
 
 @st.cache_data(ttl=86400, show_spinner="Preparing the 9-feedstock mix...")
-def _x9_mix(years, red, cap):
+def _x9_mix(years, red, cap, feeds_key=()):
     import yfinance as yf
     from scipy.optimize import minimize as _min
     end = pd.Timestamp.today().normalize()
@@ -525,7 +525,7 @@ _view9 = st.radio(
 )
 _x9 = None
 if not _view9.startswith("4"):
-    _x9 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap))
+    _x9 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
     if _x9 is None:
         st.warning("The 9-feedstock mix could not be built right now (data missing or no mix follows your "
                    "rules). Showing the 4-feedstock recommendation.")
