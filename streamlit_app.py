@@ -1713,7 +1713,7 @@ with st.expander("Extended universe: 15 feedstocks, shrinkage and a commodity be
         "A proof-of-concept extension. We widen your feedstock universe from 4 to **15 feedstocks**, use **real "
         "exchange prices** for UCO (Rotterdam gasoil), rapeseed (Euronext), canola (ICE) and palm oil (Bursa "
         "Malaysia), and stabilise the covariance "
-        "matrix with **shrinkage** (LN 3). Then we compare your mix with a **commodity market benchmark**."
+        "matrix with **shrinkage**. Then we compare your mix with a **commodity market benchmark**."
     )
 
     # feedstock: (source, ticker or file, waste-based?, tallow group?)
@@ -1862,7 +1862,7 @@ with st.expander("Extended universe: 15 feedstocks, shrinkage and a commodity be
             }, index=_xnames))
             st.caption(
                 f"{_T} weeks of returns (weekly risk ÷ √5 gives daily). With {_xn} feedstocks we estimate {_xn * (_xn - 1) // 2} correlations from the same "
-                f"history. Shrinkage (LN 3) blends the raw estimate with a stable target; at {_xshrink:.0%} it only "
+                f"history. Shrinkage blends the raw estimate with a stable target; at {_xshrink:.0%} it only "
                 "adjusts the mix slightly (compare the last two columns), and the backtest shows it changes almost "
                 "nothing out of sample: a safety net that matters more with shorter histories. The mix with "
                 "shrinkage is our extended recommendation. Waste-based: UCO and animal fats (tallow, pork fat). Corn is a rough proxy for "
@@ -1936,7 +1936,7 @@ with st.expander("Extended universe: 15 feedstocks, shrinkage and a commodity be
                               f"day: with your rules, you cannot copy the market.")
                 st.caption(
                     "Tracking error = √[xᵀΣx − 2xᵀσ_b + σ_b²]: the daily volatility of the gap between your cost and "
-                    "the benchmark (LN 2). " + _xmsg
+                    "the benchmark. " + _xmsg
                 )
 
 
