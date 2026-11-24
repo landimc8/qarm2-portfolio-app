@@ -2227,7 +2227,8 @@ with st.expander("Hedging: lock your margin (futures and forward contracts)"):
         "locked too. Limits: the numbers assume each hedge follows your real price perfectly. In reality, basis "
         "risk remains, for example between Euronext rapeseed (a seed) and your rapeseed oil. Tonnes assume "
         "about 1 tonne of feedstock per tonne of biodiesel. Rapeseed contracts use about 2.4 t of seed per tonne "
-        "of oil: a broker would set the exact hedge ratio."
+        "of oil: a broker would set the exact hedge ratio. The hedge uses the 4 feedstocks you actually buy: the "
+        "extended universe helps you choose a calmer mix, the hedge locks the prices of what you buy."
     )
 
 
