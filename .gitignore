@@ -5,8 +5,4 @@ __pycache__/
 
 .agents/
 .DS_Store
-data/bcom.csv
-data/bcomag.csv
-data/canola_ice.csv
-data/palm_bursa.csv
 example_prices_from_proxies.csv
