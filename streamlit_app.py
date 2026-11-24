@@ -1389,19 +1389,6 @@ with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity be
             )
 
             # ---- the 9-feedstock mix: allocation and risk budgeting ----
-            _X9_SHORT = {
-                "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
-                "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
-                "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)",
-                "Canola (ICE)": "Canola\n(ICE)", "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)",
-                "Distillers corn oil (corn)": "Corn oil\n(corn)",
-            }
-            _X9_COLORS = {
-                "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
-                "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34",
-                "Rapeseed (Euronext)": "#3A6BA5", "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22",
-                "Distillers corn oil (corn)": "#7F8C8D",
-            }
             _x9w = np.clip(_xw_shrunk, 0, None)
             _x9w = _x9w / _x9w.sum()
             _x9order = [n for n in _xnames if _XFEED[n][2]] + [n for n in _xnames if not _XFEED[n][2]]
@@ -1423,8 +1410,8 @@ with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity be
                            color="dimgray", fontsize=9)
                 ax_x9.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
                 ax_x9.set_ylabel("Portfolio weight")
-                ax_x9.set_title("Feedstock allocation (9 feedstocks)")
-                ax_x9.tick_params(axis="x", labelsize=8)
+                ax_x9.set_title(f"Feedstock allocation ({len(_x9order)} feedstocks)")
+                ax_x9.tick_params(axis="x", labelsize=7)
                 fig_x9.tight_layout()
                 st.pyplot(fig_x9)
             with x9b:
@@ -1455,8 +1442,8 @@ with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity be
             ax_x9r.set_ylim(min(0.0, float(_x9rc.min()) - 0.02), max(0.45, float(_x9rc.max()) + 0.08))
             ax_x9r.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
             ax_x9r.set_ylabel("Share of your cost risk")
-            ax_x9r.set_title("Risk contribution per feedstock (9 feedstocks)")
-            ax_x9r.tick_params(axis="x", labelsize=8)
+            ax_x9r.set_title(f"Risk contribution per feedstock ({len(_x9order)} feedstocks)")
+            ax_x9r.tick_params(axis="x", labelsize=7)
             fig_x9r.tight_layout()
             st.pyplot(fig_x9r)
 
