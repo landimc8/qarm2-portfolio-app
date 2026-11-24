@@ -111,6 +111,11 @@ with st.expander("A note on the data (basis risk)"):
         **To remove most of this gap, upload your real prices** (Argus or
         your invoices) in the sidebar under **"Add your own data"**: the
         tool then runs the same optimization on them.
+
+        **The extended universe already closes part of this gap:** choose
+        "Extended universe (15 feedstocks)" under Recommended allocation to use
+        real exchange prices for UCO (Rotterdam gasoil), rapeseed (Euronext)
+        and canola (ICE).
         """
     )
 
