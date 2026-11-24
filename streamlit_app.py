@@ -421,9 +421,106 @@ with st.expander("Explore the curves point by point"):
                "toward 100% Darling, which your cap forbids.")
 
 
+# --- 9-feedstock mix for the "4 / 9 feedstocks" switch (same method as the extended box) ---
+
+_X9_FEEDS = {  # name: (source, file or ticker, waste-based?, tallow group?)
+    "UCO (Rotterdam gasoil)": ("csv", "data/gasoil_ice.csv", True, False),
+    "Tallow (live cattle)": ("yahoo", "LE=F", True, True),
+    "Tallow (Darling)": ("yahoo", "DAR", True, True),
+    "Pork fat / white grease (lean hogs)": ("yahoo", "HE=F", True, False),
+    "Soybean oil": ("yahoo", "ZL=F", False, False),
+    "Rapeseed (Euronext)": ("csv", "data/rapeseed_euronext.csv", False, False),
+    "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
+    "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
+    "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
+}
+_X9_SHORT = {
+    "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
+    "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
+    "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)", "Canola (ICE)": "Canola\n(ICE)",
+    "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)", "Distillers corn oil (corn)": "Corn oil\n(corn)",
+}
+_X9_COLORS = {
+    "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
+    "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34", "Rapeseed (Euronext)": "#3A6BA5",
+    "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22", "Distillers corn oil (corn)": "#7F8C8D",
+}
+
+
+@st.cache_data(ttl=86400, show_spinner="Preparing the 9-feedstock mix...")
+def _x9_mix(years, red, cap):
+    import yfinance as yf
+    from scipy.optimize import minimize as _min
+    end = pd.Timestamp.today().normalize()
+    start = end - pd.DateOffset(years=years)
+    prices, missing = {}, []
+    for name, (src, ref, _w, _t) in _X9_FEEDS.items():
+        sr = None
+        try:
+            if src == "csv":
+                d = pd.read_csv(ref, thousands=",")
+                d["Date"] = pd.to_datetime(d["Date"], format="%m/%d/%Y")
+                sr = d.set_index("Date").sort_index()["Price"].astype(float)
+                sr = sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
+            else:
+                d = yf.download(ref, start=start, end=end, auto_adjust=True, progress=False, threads=False)
+                if d is not None and not d.empty:
+                    c = d["Close"]
+                    sr = (c.iloc[:, 0] if isinstance(c, pd.DataFrame) else c).dropna()
+        except Exception:
+            sr = None
+        if sr is None or len(sr) < 250:
+            missing.append(name)
+        else:
+            prices[name] = sr
+    if len(prices) < 4:
+        return None
+    px = pd.DataFrame(prices).sort_index()
+    px = px[px.index >= px.dropna(how="any").index.min()].ffill(limit=5).dropna()
+    r = px.resample("W-FRI").last().pct_change().dropna()
+    if "Rapeseed (Euronext)" in r.columns:
+        r = r[~(r.index.month.isin([2, 5, 8, 11]) & (r.index.day <= 9))]
+    names = list(r.columns)
+    n = len(names)
+    X = r.values - r.values.mean(axis=0)
+    T = X.shape[0]
+    emp = X.T @ X / T
+    mu = np.trace(emp) / n
+    delta = ((emp - mu * np.eye(n)) ** 2).sum() / n
+    beta = min(((X ** 2).T @ (X ** 2) / T - emp ** 2).sum() / (n * T), delta)
+    shrink = float(beta / delta) if delta > 0 else 0.0
+    S_shrunk = (1 - shrink) * emp + shrink * mu * np.eye(n)
+    waste = np.array([1.0 if _X9_FEEDS[k][2] else 0.0 for k in names])
+    tallow = np.array([1.0 if _X9_FEEDS[k][3] else 0.0 for k in names])
+    cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+            {"type": "ineq", "fun": lambda x: x @ waste - red},
+            {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+    res = _min(lambda x: x @ S_shrunk @ x, np.ones(n) / n, method="SLSQP", bounds=[(0.0, cap)] * n,
+               constraints=cons, options={"maxiter": 1000, "ftol": 1e-14})
+    if not res.success:
+        return None
+    w = np.clip(res.x, 0, None)
+    return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
+            "missing": missing, "weeks": T, "shrink": shrink}
+
+
 # --- recommended allocation ------------------------------------------------
 
 st.header("Recommended allocation")
+
+_view9 = st.radio(
+    "Feedstocks shown here and in risk budgeting:",
+    ["4 feedstocks (main recommendation)", "9 feedstocks (extended universe)"],
+    horizontal=True, key="view9",
+    help="The 9-feedstock view uses real European prices for UCO and rapeseed, adds canola, palm oil, pork fat "
+         "and corn oil, and uses shrinkage (LN 3). Hedging, Black-Litterman and the other boxes stay on 4 feedstocks.",
+)
+_x9 = None
+if _view9.startswith("9"):
+    _x9 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap))
+    if _x9 is None:
+        st.warning("The 9-feedstock mix could not be built right now (data missing or no mix follows your "
+                   "rules). Showing the 4-feedstock recommendation.")
 
 pick_method = st.radio(
     "Pick a point on the constrained frontier:",
@@ -437,97 +534,168 @@ recommended = (
 weights = recommended["weights"]
 bar_colors = [TICKER_COLORS[t] for t in PORTFOLIO_TICKERS]
 
-render_ticker_key()
+if _x9 is not None:
+    _n9, _w9, _S9 = _x9["names"], _x9["w"], _x9["S"]
+    _o9 = [k for k in _n9 if _X9_FEEDS[k][2]] + [k for k in _n9 if not _X9_FEEDS[k][2]]
+    _i9 = [_n9.index(k) for k in _o9]
+    _nw9 = sum(1 for k in _o9 if _X9_FEEDS[k][2])
+    st.caption("Minimum-variance mix of the extended universe (weekly data, shrinkage). The frontier pick above "
+               "applies to the 4-feedstock view only.")
+    if _x9["missing"]:
+        st.warning("Not available right now (skipped): " + ", ".join(_x9["missing"]) + ".")
+    c9a, c9b = st.columns([2, 1])
+    with c9a:
+        fig9, ax9 = plt.subplots(figsize=(7, 4))
+        _b9 = ax9.bar([_X9_SHORT.get(k, k) for k in _o9], _w9[_i9], color=[_X9_COLORS.get(k, "#999999") for k in _o9])
+        ax9.bar_label(_b9, labels=[f"{v:.1%}" for v in _w9[_i9]], padding=3, fontsize=8)
+        ax9.axvline(_nw9 - 0.5, color="gray", linestyle="--", linewidth=1, alpha=0.6)
+        _top9 = max(concentration_cap, float(_w9.max())) * 1.3
+        ax9.set_ylim(0, _top9)
+        ax9.text((_nw9 - 1) / 2, _top9 * 0.89, "Waste-based (RED2)", ha="center", fontsize=8, color="dimgray")
+        ax9.text(_nw9 + (len(_o9) - _nw9 - 1) / 2, _top9 * 0.89, "Crop-based", ha="center", fontsize=8,
+                 color="dimgray")
+        ax9.set_ylabel("Portfolio weight")
+        ax9.set_title("Feedstock allocation (9 feedstocks)")
+        ax9.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+        ax9.tick_params(axis="x", labelsize=7)
+        fig9.tight_layout()
+        st.pyplot(fig9)
+    with c9b:
+        st.metric("Expected daily cost volatility", f"{np.sqrt(_w9 @ _S9 @ _w9 / 5):.2%}",
+                  help="Weekly risk ÷ √5, so it compares with the 4-feedstock daily number.")
+        _ws9 = float(_w9 @ _x9["waste"])
+        st.metric("Sustainability share achieved", f"{_ws9:.1%}", help=f"Target minimum: {sustainability_min:.0%}")
+        st.markdown(f"{'✅ **PASS**' if _ws9 >= sustainability_min - 1e-6 else '❌ **FAIL**'} -- RED2 sustainability minimum")
+        _r9 = {k: w for k, w in zip(_n9, _w9) if not _X9_FEEDS[k][3]}
+        _r9["Tallow"] = float(_w9 @ _x9["tallow"])
+        _big9 = max(_r9.values())
+        st.metric("Largest single feedstock weight", f"{_big9:.1%}",
+                  help="Tallow counts as one feedstock: live cattle + Darling together.")
+        st.markdown(f"{'✅ **PASS**' if _big9 <= concentration_cap + 1e-6 else '❌ **FAIL**'} -- concentration cap")
+        st.caption(f"At a ${procurement_budget:,.0f} budget:")
+        st.dataframe(pd.DataFrame({
+            "Share": [f"{_w9[i]:.1%}" for i in _i9],
+            "Money": [f"${_w9[i] * procurement_budget:,.0f}" for i in _i9],
+        }, index=_o9))
+else:
+    render_ticker_key()
 
-col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([2, 1])
 
-with col1:
-    # grouped by RED2 bucket (waste-based, then crop-based) instead of
-    # one flat row in PORTFOLIO_TICKERS order -- this is what the
-    # roadmap's "split into waste-based vs. crop-based buckets" line
-    # actually asked for
-    waste_t, waste_w, crop_t, crop_w = bucket_split(weights, PORTFOLIO_TICKERS, WASTE_BASED)
-    ordered_tickers = waste_t + crop_t
-    ordered_weights = np.array(waste_w + crop_w)
-    ordered_colors = [TICKER_COLORS[t] for t in ordered_tickers]
+    with col1:
+        # grouped by RED2 bucket (waste-based, then crop-based) instead of
+        # one flat row in PORTFOLIO_TICKERS order -- this is what the
+        # roadmap's "split into waste-based vs. crop-based buckets" line
+        # actually asked for
+        waste_t, waste_w, crop_t, crop_w = bucket_split(weights, PORTFOLIO_TICKERS, WASTE_BASED)
+        ordered_tickers = waste_t + crop_t
+        ordered_weights = np.array(waste_w + crop_w)
+        ordered_colors = [TICKER_COLORS[t] for t in ordered_tickers]
 
-    gap = 1  # extra x-slot between the two buckets, purely visual
-    x_positions = list(range(len(waste_t))) + [i + len(waste_t) + gap for i in range(len(crop_t))]
+        gap = 1  # extra x-slot between the two buckets, purely visual
+        x_positions = list(range(len(waste_t))) + [i + len(waste_t) + gap for i in range(len(crop_t))]
 
-    fig2, ax2 = plt.subplots(figsize=(7, 4))
-    bars2 = ax2.bar(x_positions, ordered_weights, color=ordered_colors, width=0.6)
-    ax2.bar_label(bars2, labels=[f"{w:.1%}" for w in ordered_weights], padding=3, fontsize=9)
-    ax2.set_xticks(x_positions)
-    ax2.set_xticklabels(ordered_tickers)
+        fig2, ax2 = plt.subplots(figsize=(7, 4))
+        bars2 = ax2.bar(x_positions, ordered_weights, color=ordered_colors, width=0.6)
+        ax2.bar_label(bars2, labels=[f"{w:.1%}" for w in ordered_weights], padding=3, fontsize=9)
+        ax2.set_xticks(x_positions)
+        ax2.set_xticklabels(ordered_tickers)
 
-    # dashed divider through the gap slot, plus a bucket label centered
-    # over each group so the RED2 split reads at a glance
-    divider_x = len(waste_t) - 0.5 + gap / 2
-    ax2.axvline(divider_x, color="gray", linestyle="--", linewidth=1, alpha=0.6)
-    y_top = max(concentration_cap, ordered_weights.max()) * 1.15
-    ax2.text((len(waste_t) - 1) / 2, y_top, "Waste-based (RED2)",
-              ha="center", fontsize=8, color="dimgray")
-    ax2.text(len(waste_t) + gap + (len(crop_t) - 1) / 2, y_top, "Crop-based",
-              ha="center", fontsize=8, color="dimgray")
+        # dashed divider through the gap slot, plus a bucket label centered
+        # over each group so the RED2 split reads at a glance
+        divider_x = len(waste_t) - 0.5 + gap / 2
+        ax2.axvline(divider_x, color="gray", linestyle="--", linewidth=1, alpha=0.6)
+        y_top = max(concentration_cap, ordered_weights.max()) * 1.15
+        ax2.text((len(waste_t) - 1) / 2, y_top, "Waste-based (RED2)",
+                  ha="center", fontsize=8, color="dimgray")
+        ax2.text(len(waste_t) + gap + (len(crop_t) - 1) / 2, y_top, "Crop-based",
+                  ha="center", fontsize=8, color="dimgray")
 
-    ax2.set_ylabel("Portfolio weight")
-    ax2.set_title("Feedstock allocation")
-    ax2.set_ylim(0, max(concentration_cap, ordered_weights.max()) * 1.3)  # headroom for labels + bucket text
-    ax2.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
-    st.pyplot(fig2)
+        ax2.set_ylabel("Portfolio weight")
+        ax2.set_title("Feedstock allocation")
+        ax2.set_ylim(0, max(concentration_cap, ordered_weights.max()) * 1.3)  # headroom for labels + bucket text
+        ax2.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+        st.pyplot(fig2)
 
-with col2:
-    st.metric("Expected daily cost volatility", f"{recommended['volatility']:.2%}")
-    st.metric("Expected daily price change", f"{recommended['return']:.4%}")
+    with col2:
+        st.metric("Expected daily cost volatility", f"{recommended['volatility']:.2%}")
+        st.metric("Expected daily price change", f"{recommended['return']:.4%}")
 
-    sustainability_achieved = sustainability_share(weights)
-    sustainability_pass = sustainability_achieved >= sustainability_min - 1e-9
-    st.metric("Sustainability share achieved", f"{sustainability_achieved:.1%}",
-              help=f"Target minimum: {sustainability_min:.0%}")
-    st.markdown(f"{'✅ **PASS**' if sustainability_pass else '❌ **FAIL**'} -- RED2 sustainability minimum")
+        sustainability_achieved = sustainability_share(weights)
+        sustainability_pass = sustainability_achieved >= sustainability_min - 1e-9
+        st.metric("Sustainability share achieved", f"{sustainability_achieved:.1%}",
+                  help=f"Target minimum: {sustainability_min:.0%}")
+        st.markdown(f"{'✅ **PASS**' if sustainability_pass else '❌ **FAIL**'} -- RED2 sustainability minimum")
 
-    _real = {t: w for t, w in zip(PORTFOLIO_TICKERS, weights) if t not in ("LE=F", "DAR")}
-    _real["Tallow (LE=F + DAR)"] = sum(w for t, w in zip(PORTFOLIO_TICKERS, weights) if t in ("LE=F", "DAR"))
-    largest_real = max(_real.values())
-    concentration_pass = largest_real <= concentration_cap + 1e-9
-    st.metric("Largest single feedstock weight", f"{largest_real:.1%}",
-              help="Tallow counts as one feedstock: LE=F + DAR together.")
-    st.markdown(f"{'✅ **PASS**' if concentration_pass else '❌ **FAIL**'} -- concentration cap")
+        _real = {t: w for t, w in zip(PORTFOLIO_TICKERS, weights) if t not in ("LE=F", "DAR")}
+        _real["Tallow (LE=F + DAR)"] = sum(w for t, w in zip(PORTFOLIO_TICKERS, weights) if t in ("LE=F", "DAR"))
+        largest_real = max(_real.values())
+        concentration_pass = largest_real <= concentration_cap + 1e-9
+        st.metric("Largest single feedstock weight", f"{largest_real:.1%}",
+                  help="Tallow counts as one feedstock: LE=F + DAR together.")
+        st.markdown(f"{'✅ **PASS**' if concentration_pass else '❌ **FAIL**'} -- concentration cap")
 
-    if "sharpe_equivalent" in recommended:  # only the Sharpe pick has this key
-        st.metric("Return-per-risk (Sharpe-equivalent)", f"{recommended['sharpe_equivalent']:.4f}")
+        if "sharpe_equivalent" in recommended:  # only the Sharpe pick has this key
+            st.metric("Return-per-risk (Sharpe-equivalent)", f"{recommended['sharpe_equivalent']:.4f}")
 
-    st.caption(f"At a ${procurement_budget:,.0f} budget:")
-    st.dataframe(pd.DataFrame({
-        "Share": [f"{w:.1%}" for w in weights],
-        "Money": [f"${w * procurement_budget:,.0f}" for w in weights],
-    }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS]))
+        st.caption(f"At a ${procurement_budget:,.0f} budget:")
+        st.dataframe(pd.DataFrame({
+            "Share": [f"{w:.1%}" for w in weights],
+            "Money": [f"${w * procurement_budget:,.0f}" for w in weights],
+        }, index=[TICKER_LABELS[t] for t in PORTFOLIO_TICKERS]))
 
 
 # --- risk budgeting ----------------------------------------------------
 
 st.header("Risk budgeting: where the risk actually comes from")
 
-rc = risk_contributions(weights, cov_matrix)
-fig3, ax3 = plt.subplots(figsize=(7, 4))
-_short = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed\n(soybeans)", "HO=F": "UCO\n(diesel)",
-          "LE=F": "Tallow\n(live cattle)", "DAR": "Tallow\n(Darling)"}
-bars3 = ax3.bar([_short.get(t, t) for t in PORTFOLIO_TICKERS], rc, color=bar_colors)
-ax3.bar_label(bars3, labels=[f"{v:.1%}" for v in rc], padding=3, fontsize=9)
-ax3.set_ylabel("Share of your cost risk")
-ax3.set_title("Risk contribution per feedstock")
-ax3.set_ylim(0, rc.max() * 1.25)  # headroom for the labels
-ax3.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
-st.pyplot(fig3)
+if _x9 is not None:
+    _rc9 = _w9 * (_S9 @ _w9) / (_w9 @ _S9 @ _w9)
+    fig9r, ax9r = plt.subplots(figsize=(7, 4))
+    _b9r = ax9r.bar([_X9_SHORT.get(k, k) for k in _o9], _rc9[_i9], color=[_X9_COLORS.get(k, "#999999") for k in _o9])
+    ax9r.bar_label(_b9r, labels=[f"{v:.1%}" for v in _rc9[_i9]], padding=3, fontsize=8)
+    ax9r.set_ylim(min(0.0, float(_rc9.min()) * 1.25), float(_rc9.max()) * 1.25)
+    ax9r.set_ylabel("Share of your cost risk")
+    ax9r.set_title("Risk contribution per feedstock (9 feedstocks)")
+    ax9r.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+    ax9r.tick_params(axis="x", labelsize=7)
+    fig9r.tight_layout()
+    st.pyplot(fig9r)
+    # caption written from the numbers, so it stays true at any setting
+    _held9 = [i for i in range(len(_n9)) if _w9[i] >= 0.02]
+    _gap9 = {i: _rc9[i] - _w9[i] for i in _held9}
+    _hi9, _lo9 = max(_gap9, key=_gap9.get), min(_gap9, key=_gap9.get)
+    _tfull9 = float(_w9 @ _x9["tallow"]) >= concentration_cap - 1e-3
+    _locap9 = _w9[_lo9] >= concentration_cap - 1e-3 or (_X9_FEEDS[_n9[_lo9]][3] and _tfull9)
+    _m9 = (f"Each bar shows how much of your cost risk comes from each feedstock. This is not the same as how much "
+           f"you buy: {_n9[_hi9]} is {_w9[_hi9]:.0%} of your budget but {_rc9[_hi9]:.0%} of your risk, because its "
+           f"price moves more or moves with the others.")
+    if _lo9 != _hi9:
+        _m9 += (f" {_n9[_lo9]} is {_w9[_lo9]:.0%} of your budget but only {_rc9[_lo9]:.0%} of your risk: "
+                + ("it is your calmest feedstock, and the best mix would buy more of it if your cap allowed."
+                   if _locap9 else "it calms the mix because it moves differently from the others."))
+    st.caption(_m9)
+else:
+    rc = risk_contributions(weights, cov_matrix)
+    fig3, ax3 = plt.subplots(figsize=(7, 4))
+    _short = {"ZL=F": "Soybean oil", "ZS=F": "Rapeseed\n(soybeans)", "HO=F": "UCO\n(diesel)",
+              "LE=F": "Tallow\n(live cattle)", "DAR": "Tallow\n(Darling)"}
+    bars3 = ax3.bar([_short.get(t, t) for t in PORTFOLIO_TICKERS], rc, color=bar_colors)
+    ax3.bar_label(bars3, labels=[f"{v:.1%}" for v in rc], padding=3, fontsize=9)
+    ax3.set_ylabel("Share of your cost risk")
+    ax3.set_title("Risk contribution per feedstock")
+    ax3.set_ylim(0, rc.max() * 1.25)  # headroom for the labels
+    ax3.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+    st.pyplot(fig3)
 
-_i_zl, _i_le = PORTFOLIO_TICKERS.index("ZL=F"), PORTFOLIO_TICKERS.index("LE=F")
-st.caption(
-    f"Each bar shows how much of your cost risk comes from each feedstock. This is not the same as how "
-    f"much you buy: soybean oil is {weights[_i_zl]:.0%} of your budget but {rc[_i_zl]:.0%} of your risk, "
-    f"because its price jumps more and moves with your rapeseed. Live cattle (tallow) is "
-    f"{weights[_i_le]:.0%} of your budget but only {rc[_i_le]:.0%} of your risk: it is your calmest "
-    f"feedstock, and the best mix would buy more of it if your cap allowed."
-)
+    _i_zl, _i_le = PORTFOLIO_TICKERS.index("ZL=F"), PORTFOLIO_TICKERS.index("LE=F")
+    st.caption(
+        f"Each bar shows how much of your cost risk comes from each feedstock. This is not the same as how "
+        f"much you buy: soybean oil is {weights[_i_zl]:.0%} of your budget but {rc[_i_zl]:.0%} of your risk, "
+        f"because its price jumps more and moves with your rapeseed. Live cattle (tallow) is "
+        f"{weights[_i_le]:.0%} of your budget but only {rc[_i_le]:.0%} of your risk: it is your calmest "
+        f"feedstock, and the best mix would buy more of it if your cap allowed."
+    )
 
 
 # --- global minimum variance (LN1 closed form, no client rules) -------------
@@ -1208,6 +1376,94 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
                 "the Dutch 2026 rules a real buyer could use almost none, so treat its weight as a comparison only. "
                 "Weeks with a rapeseed contract roll are removed."
             )
+
+            # ---- the 9-feedstock mix: allocation and risk budgeting ----
+            _X9_SHORT = {
+                "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
+                "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
+                "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)",
+                "Canola (ICE)": "Canola\n(ICE)", "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)",
+                "Distillers corn oil (corn)": "Corn oil\n(corn)",
+            }
+            _X9_COLORS = {
+                "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
+                "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34",
+                "Rapeseed (Euronext)": "#3A6BA5", "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22",
+                "Distillers corn oil (corn)": "#7F8C8D",
+            }
+            _x9w = np.clip(_xw_shrunk, 0, None)
+            _x9w = _x9w / _x9w.sum()
+            _x9order = [n for n in _xnames if _XFEED[n][2]] + [n for n in _xnames if not _XFEED[n][2]]
+            _x9i = [_xnames.index(n) for n in _x9order]
+            _x9nw = sum(1 for n in _x9order if _XFEED[n][2])
+
+            st.markdown("**Recommended allocation with your extended universe**")
+            x9a, x9b = st.columns([3, 2])
+            with x9a:
+                fig_x9, ax_x9 = plt.subplots(figsize=(9, 5))
+                _b = ax_x9.bar([_X9_SHORT.get(n, n) for n in _x9order], _x9w[_x9i],
+                               color=[_X9_COLORS.get(n, "#999999") for n in _x9order])
+                ax_x9.bar_label(_b, labels=[f"{v:.1%}" for v in _x9w[_x9i]], padding=3, fontsize=9)
+                ax_x9.axvline(_x9nw - 0.5, color="grey", linestyle="--", linewidth=1)
+                _top = max(0.45, float(_x9w.max()) + 0.08)
+                ax_x9.set_ylim(0, _top)
+                ax_x9.text((_x9nw - 1) / 2, _top * 0.93, "Waste-based", ha="center", color="dimgray", fontsize=9)
+                ax_x9.text(_x9nw + (len(_x9order) - _x9nw - 1) / 2, _top * 0.93, "Crop-based", ha="center",
+                           color="dimgray", fontsize=9)
+                ax_x9.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
+                ax_x9.set_ylabel("Portfolio weight")
+                ax_x9.set_title("Feedstock allocation (9 feedstocks)")
+                ax_x9.tick_params(axis="x", labelsize=8)
+                fig_x9.tight_layout()
+                st.pyplot(fig_x9)
+            with x9b:
+                _x9waste = float(_x9w @ _xwaste)
+                _x9real = {n: w for n, w in zip(_xnames, _x9w) if not _XFEED[n][3]}
+                _x9real["Tallow (cattle + Darling)"] = float(_x9w @ _xtallow)
+                _x9big = max(_x9real.values())
+                st.metric("Daily cost risk", f"{np.sqrt(_x9w @ _xS @ _x9w / 5):.2%}")
+                st.metric("Waste-based share", f"{_x9waste:.1%}")
+                st.markdown(f"{'✅ **PASS**' if _x9waste >= sustainability_min - 1e-6 else '❌ **FAIL**'} -- "
+                            f"waste-based minimum ({sustainability_min:.0%})")
+                st.metric("Largest single feedstock weight", f"{_x9big:.1%}",
+                          help="Tallow counts as one feedstock: live cattle + Darling together.")
+                st.markdown(f"{'✅ **PASS**' if _x9big <= concentration_cap + 1e-6 else '❌ **FAIL**'} -- "
+                            f"concentration cap ({concentration_cap:.0%})")
+                st.caption(f"At a ${procurement_budget:,.0f} budget:")
+                st.dataframe(pd.DataFrame({
+                    "Share": [f"{_x9w[i]:.1%}" for i in _x9i],
+                    "Money": [f"${_x9w[i] * procurement_budget:,.0f}" for i in _x9i],
+                }, index=_x9order))
+
+            st.markdown("**Risk budgeting with your extended universe**")
+            _x9rc = _x9w * (_xS @ _x9w) / (_x9w @ _xS @ _x9w)
+            fig_x9r, ax_x9r = plt.subplots(figsize=(9, 4))
+            _br = ax_x9r.bar([_X9_SHORT.get(n, n) for n in _x9order], _x9rc[_x9i],
+                             color=[_X9_COLORS.get(n, "#999999") for n in _x9order])
+            ax_x9r.bar_label(_br, labels=[f"{v:.1%}" for v in _x9rc[_x9i]], padding=3, fontsize=9)
+            ax_x9r.set_ylim(min(0.0, float(_x9rc.min()) - 0.02), max(0.45, float(_x9rc.max()) + 0.08))
+            ax_x9r.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
+            ax_x9r.set_ylabel("Share of your cost risk")
+            ax_x9r.set_title("Risk contribution per feedstock (9 feedstocks)")
+            ax_x9r.tick_params(axis="x", labelsize=8)
+            fig_x9r.tight_layout()
+            st.pyplot(fig_x9r)
+
+            # caption written from the numbers, so it stays true at any setting
+            _held = [i for i in range(_xn) if _x9w[i] >= 0.02]
+            _gap = {i: _x9rc[i] - _x9w[i] for i in _held}  # risk share minus budget share
+            _hi = max(_gap, key=_gap.get)
+            _lo = min(_gap, key=_gap.get)
+            _tallow_full = float(_x9w @ _xtallow) >= concentration_cap - 1e-3
+            _lo_capped = _x9w[_lo] >= concentration_cap - 1e-3 or (_XFEED[_xnames[_lo]][3] and _tallow_full)
+            _msg = (f"Each bar shows how much of your cost risk comes from each feedstock. This is not the same as "
+                    f"how much you buy: {_xnames[_hi]} is {_x9w[_hi]:.0%} of your budget but {_x9rc[_hi]:.0%} of "
+                    f"your risk, because its price moves more or moves with the others.")
+            if _lo != _hi:
+                _msg += (f" {_xnames[_lo]} is {_x9w[_lo]:.0%} of your budget but only {_x9rc[_lo]:.0%} of your risk: "
+                         + ("it is your calmest feedstock, and the mix would buy more of it if your cap allowed."
+                            if _lo_capped else "it calms the mix because it moves differently from the others."))
+            st.caption(_msg + " Risk is measured with the raw covariance of weekly returns.")
 
             # ---- commodity benchmark: tracking error and beta ----
             if _xb_ser is None or len(_xb_ser) < 250:
