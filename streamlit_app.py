@@ -966,52 +966,81 @@ with st.expander("Basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F)"):
 # --- why minimum variance: side-by-side comparison --------------------------
 
 with st.expander("Why we recommend minimum variance (not Sharpe)"):
-    mv_pick = min_variance_portfolio(constrained_frontier)
-    sr_pick = max_sharpe_equivalent_portfolio(constrained_frontier)
     horizon = car_horizon if "car_horizon" in globals() else 21
     conf = car_conf if "car_conf" in globals() else "95%"
     z_val = 1.645 if conf == "95%" else 2.326
 
-    def _why_row(p):
+    _why_view = st.radio("Feedstocks in this comparison:",
+                         ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                         horizontal=True, key="why15")
+
+    def _pick4(p):
         rc_p = risk_contributions(p["weights"], cov_matrix)
         top = int(np.argmax(rc_p))
+        return {"vol": p["volatility"], "ret": p["return"],
+                "top": f"{TICKER_LABELS[PORTFOLIO_TICKERS[top]]} ({rc_p[top]:.0%})",
+                "waste": sustainability_share(p["weights"])}
+
+    def _pick15(x):
+        w, S = x["w"], x["S"]
+        rc_p = w * (S @ w) / (w @ S @ w)
+        top = int(np.argmax(rc_p))
+        return {"vol": float(np.sqrt(w @ S @ w / 5)), "ret": float(x["mu"] @ w / 5),
+                "top": f"{x['names'][top]} ({rc_p[top]:.0%})", "waste": float(w @ x["waste"])}
+
+    mv_row = sr_row = None
+    if _why_view.startswith("Extended"):
+        _a = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        _b = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS),
+                     "sharpe")
+        if _a is not None and _b is not None and _b.get("goal") == "sharpe":
+            mv_row, sr_row = _pick15(_a), _pick15(_b)
+        else:
+            st.warning("The 15-feedstock comparison could not be built right now. Showing 4 feedstocks.")
+    if mv_row is None:
+        mv_row = _pick4(min_variance_portfolio(constrained_frontier))
+        sr_row = _pick4(max_sharpe_equivalent_portfolio(constrained_frontier))
+
+    def _why_row(r):
         return [
-            f"{p['volatility']:.2%}",
-            f"{p['return']:.3%}",
-            f"{(1 + p['return']) ** 252 - 1:+.1%}",
-            f"${procurement_budget * p['volatility'] * np.sqrt(horizon) * z_val:,.0f}",
-            f"{p['return'] / p['volatility']:.3f}",
-            f"{TICKER_LABELS[PORTFOLIO_TICKERS[top]]} ({rc_p[top]:.0%})",
-            f"{sustainability_share(p['weights']):.0%}",
+            f"{r['vol']:.2%}",
+            f"{r['ret']:.3%}",
+            f"{(1 + r['ret']) ** 252 - 1:+.1%}",
+            f"${procurement_budget * r['vol'] * np.sqrt(horizon) * z_val:,.0f}",
+            f"{r['ret'] / r['vol']:.3f}",
+            r["top"],
+            f"{r['waste']:.0%}",
         ]
 
     st.markdown(
-                        "You are a **buyer**: a higher 'return' means feedstock prices going up, "
+        "You are a **buyer**: a higher 'return' means feedstock prices going up, "
         "so higher costs. Your goal is **stable costs**, which is what minimum variance gives."
     )
     st.dataframe(pd.DataFrame({
-        "Minimum variance (recommended)": _why_row(mv_pick),
-        "Sharpe-equivalent": _why_row(sr_pick),
+        "Minimum variance (recommended)": _why_row(mv_row),
+        "Sharpe-equivalent": _why_row(sr_row),
     }, index=[
         "Daily risk: σ(x) = √(xᵀΣx)",
         "Daily 'return' = price increase: μ(x) = xᵀμ",
         "Price increase over a year: (1 + μ)^252 − 1",
         f"Cost-at-Risk ({conf}, {horizon} days): B × σ × √h × z",
         "Price increase per risk: μ / σ (lower is better for you)",
-        "Main risk source: RC*ᵢ",
+        "Main risk source (risk contribution)",
         "Waste share (RED2)",
     ]))
-    _car_mv = procurement_budget * mv_pick["volatility"] * np.sqrt(horizon) * z_val
+    _car_mv = procurement_budget * mv_row["vol"] * np.sqrt(horizon) * z_val
+    _n_why = "15 feedstocks (weekly data ÷ 5, shrinkage)" if _why_view.startswith("Extended") else "your 4 main feedstocks"
     st.caption(
+        f"Computed with {_n_why}. "
         f"**What is the Cost-at-Risk?** In a bad month (about 1 month in 20), your feedstock bill "
         f"could rise by about \\${_car_mv:,.0f} with our mix. In the other 19 months, it rises by "
         f"less, or falls. Formula: budget × daily risk × √{horizon} days × {z_val}. We recommend "
         f"you follow this number every month: it shows your risk in money, so you can decide how "
         f"much to hedge. It assumes normal price moves, so real crises like 2022 can be worse. "
         f"Minimum variance always has the lowest risk by definition. The Sharpe pick is worse for you "
-        f"twice: your costs move more ({sr_pick['volatility']:.2%} vs {mv_pick['volatility']:.2%} a day), "
+        f"twice: your costs move more ({sr_row['vol']:.2%} vs {mv_row['vol']:.2%} a day), "
         f"and it picks the feedstocks whose prices rose fastest in the past "
-        f"({(1 + sr_pick['return']) ** 252 - 1:+.1%} a year vs {(1 + mv_pick['return']) ** 252 - 1:+.1%}). "
+        f"({(1 + sr_row['ret']) ** 252 - 1:+.1%} a year vs {(1 + mv_row['ret']) ** 252 - 1:+.1%}). "
         f"That is why we recommend minimum variance: stable costs are the right goal for a buyer."
     )
 
