@@ -433,17 +433,25 @@ _X9_FEEDS = {  # name: (source, file or ticker, waste-based?, tallow group?)
     "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
     "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
     "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
+    "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
+    "UCO (heating oil)": ("yahoo", "HO=F", True, False),
+    "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
 }
 _X9_SHORT = {
     "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
     "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
     "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)", "Canola (ICE)": "Canola\n(ICE)",
     "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)", "Distillers corn oil (corn)": "Corn oil\n(corn)",
+    "Soybeans (CBOT)": "Soybeans\n(CBOT)", "UCO (heating oil)": "UCO\n(heat. oil)",
+    "Tallow (feeder cattle)": "Tallow\n(feeder)", "Rapeseed oil (ZCE China)": "Rapes. oil\n(China)",
+    "Yellow grease (USDA)": "Yellow\ngrease",
 }
 _X9_COLORS = {
     "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
     "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34", "Rapeseed (Euronext)": "#3A6BA5",
     "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22", "Distillers corn oil (corn)": "#7F8C8D",
+    "Soybeans (CBOT)": "#1F4E79", "UCO (heating oil)": "#E74C3C", "Tallow (feeder cattle)": "#5B2C6F",
+    "Rapeseed oil (ZCE China)": "#5DADE2", "Yellow grease (USDA)": "#F4D03F",
 }
 
 
@@ -510,13 +518,13 @@ st.header("Recommended allocation")
 
 _view9 = st.radio(
     "Feedstocks shown here and in risk budgeting:",
-    ["4 feedstocks (main recommendation)", "9 feedstocks (extended universe)"],
+    ["4 feedstocks (main recommendation)", "Extended universe (12 feedstocks)"],
     horizontal=True, key="view9",
     help="The 9-feedstock view uses real European prices for UCO and rapeseed, adds canola, palm oil, pork fat "
          "and corn oil, and uses shrinkage (LN 3). Hedging, Black-Litterman and the other boxes stay on 4 feedstocks.",
 )
 _x9 = None
-if _view9.startswith("9"):
+if not _view9.startswith("4"):
     _x9 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap))
     if _x9 is None:
         st.warning("The 9-feedstock mix could not be built right now (data missing or no mix follows your "
@@ -555,7 +563,7 @@ if _x9 is not None:
         ax9.text(_nw9 + (len(_o9) - _nw9 - 1) / 2, _top9 * 0.89, "Crop-based", ha="center", fontsize=8,
                  color="dimgray")
         ax9.set_ylabel("Portfolio weight")
-        ax9.set_title("Feedstock allocation (9 feedstocks)")
+        ax9.set_title(f"Feedstock allocation ({len(_n9)} feedstocks)")
         ax9.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
         ax9.tick_params(axis="x", labelsize=7)
         fig9.tight_layout()
@@ -656,7 +664,7 @@ if _x9 is not None:
     ax9r.bar_label(_b9r, labels=[f"{v:.1%}" for v in _rc9[_i9]], padding=3, fontsize=8)
     ax9r.set_ylim(min(0.0, float(_rc9.min()) * 1.25), float(_rc9.max()) * 1.25)
     ax9r.set_ylabel("Share of your cost risk")
-    ax9r.set_title("Risk contribution per feedstock (9 feedstocks)")
+    ax9r.set_title(f"Risk contribution per feedstock ({len(_n9)} feedstocks)")
     ax9r.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
     ax9r.tick_params(axis="x", labelsize=7)
     fig9r.tight_layout()
@@ -1216,13 +1224,13 @@ with st.expander("Other strategies: minimum CVaR and risk parity (for comparison
     )
 
 
-# --- extended universe: 9 feedstocks, shrinkage (LN 3) and a commodity benchmark -----
+# --- extended universe: 12 feedstocks, shrinkage (LN 3) and a commodity benchmark -----
 
-with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity benchmark"):
+with st.expander("Extended universe: 12 feedstocks, shrinkage and a commodity benchmark"):
     from scipy.optimize import minimize as _xminimize
 
     st.markdown(
-        "A proof-of-concept extension. We widen your feedstock universe from 4 to **9 feedstocks**, use **real "
+        "A proof-of-concept extension. We widen your feedstock universe from 4 to **12 feedstocks**, use **real "
         "exchange prices** for UCO (Rotterdam gasoil), rapeseed (Euronext), canola (ICE) and palm oil (Bursa "
         "Malaysia), and stabilise the covariance "
         "matrix with **shrinkage** (LN 3). Then we compare your mix with a **commodity market benchmark**."
@@ -1239,6 +1247,9 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
         "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
         "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
         "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
+        "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
+        "UCO (heating oil)": ("yahoo", "HO=F", True, False),
+        "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
     }
     # benchmark: (source, file or ticker, Yahoo ticker to try when the file is not here)
     _XBENCH = {"Bloomberg Commodity Index (BCOM)": ("csv", "data/bcom.csv", "^BCOM"),
@@ -1371,8 +1382,8 @@ with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity ben
                 "history, so the raw covariance matrix is noisy and the optimizer over-trusts small differences. "
                 "Shrinkage (LN 3) blends it with a stable target; the mix with shrinkage is our extended "
                 "recommendation. Waste-based: UCO and animal fats (tallow, pork fat). Corn is a rough proxy for "
-                "distillers corn oil, lean hogs for white grease, prices stay in their own currency: rapeseed in euros, "
-                "canola in Canadian dollars, palm oil in ringgit, the others in dollars. Palm oil is high-ILUC: under "
+                "distillers corn oil, lean hogs for white grease, feeder cattle and heating oil are extra proxies for tallow and UCO. Prices stay in their own currency: rapeseed in euros, canola in "
+                "Canadian dollars, palm oil in ringgit, the others in dollars. Palm oil is high-ILUC: under "
                 "the Dutch 2026 rules a real buyer could use almost none, so treat its weight as a comparison only. "
                 "Weeks with a rapeseed contract roll are removed."
             )
