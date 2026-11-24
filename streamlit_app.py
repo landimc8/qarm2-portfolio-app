@@ -245,33 +245,275 @@ if constrained_frontier["success"].sum() == 0:
     st.stop()
 
 
+# --- 9-feedstock mix for the "4 / 9 feedstocks" switch (same method as the extended box) ---
+
+_X9_FEEDS = {  # name: (source, file or ticker, waste-based?, tallow group?)
+    "UCO (Rotterdam gasoil)": ("csv", "data/gasoil_ice.csv", True, False),
+    "Tallow (live cattle)": ("yahoo", "LE=F", True, True),
+    "Tallow (Darling)": ("yahoo", "DAR", True, True),
+    "Pork fat / white grease (lean hogs)": ("yahoo", "HE=F", True, False),
+    "Soybean oil": ("yahoo", "ZL=F", False, False),
+    "Rapeseed (Euronext)": ("csv", "data/rapeseed_euronext.csv", False, False),
+    "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
+    "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
+    "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
+    "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
+    "UCO (heating oil)": ("yahoo", "HO=F", True, False),
+    "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
+    "Neste (company proxy)": ("yahoo", "NESTE.HE", False, False),
+    "Verbio (company proxy)": ("yahoo", "VBK.DE", False, False),
+    "Bunge (company proxy)": ("yahoo", "BG", False, False),
+}
+_X9_SHORT = {
+    "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
+    "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
+    "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)", "Canola (ICE)": "Canola\n(ICE)",
+    "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)", "Distillers corn oil (corn)": "Corn oil\n(corn)",
+    "Soybeans (CBOT)": "Soybeans\n(CBOT)", "UCO (heating oil)": "UCO\n(heat. oil)",
+    "Neste (company proxy)": "Neste\n(stock)", "Verbio (company proxy)": "Verbio\n(stock)",
+    "Bunge (company proxy)": "Bunge\n(stock)",
+    "Tallow (feeder cattle)": "Tallow\n(feeder)", "Rapeseed oil (ZCE China)": "Rapes. oil\n(China)",
+    "Yellow grease (USDA)": "Yellow\ngrease",
+}
+_X9_COLORS = {
+    "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
+    "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34", "Rapeseed (Euronext)": "#3A6BA5",
+    "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22", "Distillers corn oil (corn)": "#7F8C8D",
+    "Soybeans (CBOT)": "#1F4E79", "UCO (heating oil)": "#E74C3C", "Tallow (feeder cattle)": "#5B2C6F",
+    "Rapeseed oil (ZCE China)": "#5DADE2", "Yellow grease (USDA)": "#F4D03F",
+    "Neste (company proxy)": "#16A085", "Verbio (company proxy)": "#A3C639", "Bunge (company proxy)": "#B9770E",
+}
+
+
+@st.cache_data(ttl=86400, show_spinner="Preparing the 9-feedstock mix...")
+def _x9_mix(years, red, cap, feeds_key=(), goal="minvar"):
+    import yfinance as yf
+    from scipy.optimize import minimize as _min
+    end = pd.Timestamp.today().normalize()
+    start = end - pd.DateOffset(years=years)
+    prices, missing = {}, []
+    for name, (src, ref, _w, _t) in _X9_FEEDS.items():
+        sr = None
+        try:
+            if src == "csv":
+                d = pd.read_csv(ref, thousands=",")
+                d["Date"] = pd.to_datetime(d["Date"], format="%m/%d/%Y")
+                sr = d.set_index("Date").sort_index()["Price"].astype(float)
+                sr = sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
+            else:
+                d = yf.download(ref, start=start, end=end, auto_adjust=True, progress=False, threads=False)
+                if d is not None and not d.empty:
+                    c = d["Close"]
+                    sr = (c.iloc[:, 0] if isinstance(c, pd.DataFrame) else c).dropna()
+        except Exception:
+            sr = None
+        if sr is None or len(sr) < 250:
+            missing.append(name)
+        else:
+            prices[name] = sr
+    if len(prices) < 4:
+        return None
+    px = pd.DataFrame(prices).sort_index()
+    px = px[px.index >= px.dropna(how="any").index.min()].ffill(limit=5).dropna()
+    r = px.resample("W-FRI").last().pct_change().dropna()
+    if "Rapeseed (Euronext)" in r.columns:
+        r = r[~(r.index.month.isin([2, 5, 8, 11]) & (r.index.day <= 9))]
+    names = list(r.columns)
+    n = len(names)
+    X = r.values - r.values.mean(axis=0)
+    T = X.shape[0]
+    emp = X.T @ X / T
+    mu = np.trace(emp) / n
+    delta = ((emp - mu * np.eye(n)) ** 2).sum() / n
+    beta = min(((X ** 2).T @ (X ** 2) / T - emp ** 2).sum() / (n * T), delta)
+    shrink = float(beta / delta) if delta > 0 else 0.0
+    S_shrunk = (1 - shrink) * emp + shrink * mu * np.eye(n)
+    waste = np.array([1.0 if _X9_FEEDS[k][2] else 0.0 for k in names])
+    tallow = np.array([1.0 if _X9_FEEDS[k][3] else 0.0 for k in names])
+    cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+            {"type": "ineq", "fun": lambda x: x @ waste - red},
+            {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+    res = _min(lambda x: x @ S_shrunk @ x, np.ones(n) / n, method="SLSQP", bounds=[(0.0, cap)] * n,
+               constraints=cons, options={"maxiter": 1000, "ftol": 1e-14})
+    if not res.success:
+        return None
+    w = np.clip(res.x, 0, None)
+    mu = r.mean().values  # average weekly price change of each feedstock
+    used = "minvar"
+    if goal == "sharpe":
+        # Sharpe-equivalent (rf = 0): highest average price change per unit of risk, same rules, shrunk covariance
+        def _neg_sr(x):
+            return -(x @ mu) / np.sqrt(max(x @ S_shrunk @ x, 1e-18))
+        best = None
+        for x0 in (w / w.sum(), np.ones(n) / n):
+            rs = _min(_neg_sr, x0, method="SLSQP", bounds=[(0.0, cap)] * n, constraints=cons,
+                      options={"maxiter": 1000, "ftol": 1e-12})
+            if rs.success and (best is None or rs.fun < best.fun):
+                best = rs
+        if best is not None and -best.fun > 0:
+            w = np.clip(best.x, 0, None)
+            used = "sharpe"
+    return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
+            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used}
+
+@st.cache_data(ttl=86400, show_spinner="Building the 15-feedstock frontier...")
+def _x15_frontier(years, red, cap, feeds_key=(), npts=50):
+    # same data as the 15-feedstock mix: weekly returns, Ledoit-Wolf shrinkage (LN 3)
+    import yfinance as yf
+    from scipy.optimize import minimize as _min, linprog as _lp
+    end = pd.Timestamp.today().normalize()
+    start = end - pd.DateOffset(years=years)
+    prices = {}
+    for name, (src, ref, _w, _t) in _X9_FEEDS.items():
+        try:
+            if src == "csv":
+                d = pd.read_csv(ref, thousands=",")
+                d["Date"] = pd.to_datetime(d["Date"], format="%m/%d/%Y")
+                sr = d.set_index("Date").sort_index()["Price"].astype(float)
+                sr = sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
+            else:
+                d = yf.download(ref, start=start, end=end, auto_adjust=True, progress=False, threads=False)
+                c = d["Close"]
+                sr = (c.iloc[:, 0] if isinstance(c, pd.DataFrame) else c).dropna()
+            if len(sr) >= 250:
+                prices[name] = sr
+        except Exception:
+            pass
+    if len(prices) < 4:
+        return None
+    px = pd.DataFrame(prices).sort_index()
+    px = px[px.index >= px.dropna(how="any").index.min()].ffill(limit=5).dropna()
+    r = px.resample("W-FRI").last().pct_change().dropna()
+    if "Rapeseed (Euronext)" in r.columns:
+        r = r[~(r.index.month.isin([2, 5, 8, 11]) & (r.index.day <= 9))]
+    names = list(r.columns)
+    n = len(names)
+    X = r.values - r.values.mean(axis=0)
+    T = X.shape[0]
+    emp = X.T @ X / T
+    m = np.trace(emp) / n
+    delta = ((emp - m * np.eye(n)) ** 2).sum() / n
+    beta = min(((X ** 2).T @ (X ** 2) / T - emp ** 2).sum() / (n * T), delta)
+    sh = float(beta / delta) if delta > 0 else 0.0
+    S = (1 - sh) * emp + sh * m * np.eye(n)
+    S_raw = r.cov().values
+    mu = r.mean().values
+    waste = np.array([1.0 if _X9_FEEDS[k][2] else 0.0 for k in names])
+    tallow = np.array([1.0 if _X9_FEEDS[k][3] else 0.0 for k in names])
+
+    def frontier(rules):
+        bnds = [(0.0, cap)] * n if rules else [(0.0, 1.0)] * n
+        cons = [{"type": "eq", "fun": lambda x: x.sum() - 1}]
+        A_ub, b_ub = None, None
+        if rules:
+            cons += [{"type": "ineq", "fun": lambda x: x @ waste - red},
+                     {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+            A_ub, b_ub = np.vstack([-waste, tallow]), np.array([-red, cap])
+        lo = _lp(mu, A_ub=A_ub, b_ub=b_ub, A_eq=np.ones((1, n)), b_eq=[1], bounds=bnds, method="highs")
+        hi = _lp(-mu, A_ub=A_ub, b_ub=b_ub, A_eq=np.ones((1, n)), b_eq=[1], bounds=bnds, method="highs")
+        if not (lo.success and hi.success):
+            return None
+        vols, rets, x0 = [], [], np.ones(n) / n
+        for t in np.linspace(mu @ lo.x, mu @ hi.x, npts):
+            res = _min(lambda x: x @ S @ x, x0, method="SLSQP", bounds=bnds,
+                       constraints=cons + [{"type": "eq", "fun": lambda x, t=t: x @ mu - t}],
+                       options={"maxiter": 500, "ftol": 1e-12})
+            if res.success:
+                vols.append(np.sqrt(res.x @ S_raw @ res.x / 5)); rets.append(t / 5); x0 = res.x
+        mv = _min(lambda x: x @ S @ x, np.ones(n) / n, method="SLSQP", bounds=bnds, constraints=cons,
+                  options={"maxiter": 1000, "ftol": 1e-14})
+        mvp = (float(np.sqrt(mv.x @ S_raw @ mv.x / 5)), float(mu @ mv.x / 5)) if mv.success else None
+        return {"vols": np.array(vols), "rets": np.array(rets), "mv": mvp}
+
+    return {"rules": frontier(True), "free": frontier(False), "n": n, "shrink": sh}
+
+
+def _beautify_frontier(ax):
+    # one clean style for both frontier charts
+    ax.grid(True, color="#E9E9E9", linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#9A9A9A")
+    ax.tick_params(colors="#444444", labelsize=9)
+    ax.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=1))
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=3))
+    ax.xaxis.label.set_color("#333333")
+    ax.yaxis.label.set_color("#333333")
+    ax.title.set_fontsize(13)
+    ax.title.set_color("#222222")
+    ax.legend(loc="upper left", fontsize=8, frameon=True, framealpha=0.95, edgecolor="#DDDDDD")
+    ax.figure.tight_layout()
+
+
 # --- frontier plot ---------------------------------------------------------
 
 st.header("Efficient frontier: constrained vs. unconstrained")
 
-fig, ax = plt.subplots(figsize=(9, 5))
-valid_u = unconstrained_frontier["success"]
-ax.plot(unconstrained_frontier["volatilities"][valid_u], unconstrained_frontier["returns"][valid_u],
-        label="Unconstrained (budget + long-only)", linestyle="--", color="gray")
-valid_c = constrained_frontier["success"]
-ax.plot(constrained_frontier["volatilities"][valid_c], constrained_frontier["returns"][valid_c],
-        label="Constrained (RED2 + concentration cap)", color="steelblue", linewidth=2)
-_mv_c = min_variance_portfolio(constrained_frontier)
-_mv_u = min_variance_portfolio(unconstrained_frontier)
-ax.scatter([_mv_u["volatility"]], [_mv_u["return"]], color="gray", s=45, zorder=5,
-           label="Safest mix with no rules")
-ax.scatter([_mv_c["volatility"]], [_mv_c["return"]], color="#D62728", s=90, zorder=6, edgecolor="black",
-           label="Our recommendation: safest mix with your rules")
-ax.annotate(f"Our recommendation\n{_mv_c['volatility']:.2%} daily risk",
-            (_mv_c["volatility"], _mv_c["return"]), xytext=(14, 0), textcoords="offset points",
-            fontsize=9, color="#D62728", va="center")
-ax.set_xlabel("Daily cost volatility (how much your costs move each day)")
-ax.set_ylabel("Expected daily price change")
-ax.set_title("Cost of your real-world rules")
-ax.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
-ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
-ax.legend()
-st.pyplot(fig)
+_front15 = st.radio("Feedstocks in this chart:", ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                    horizontal=True, key="front15")
+_f15 = None
+if _front15.startswith("Extended"):
+    _f15 = _x15_frontier(int(years_lookback), float(sustainability_min), float(concentration_cap),
+                         tuple(_X9_FEEDS), int(n_frontier_points))
+    if _f15 is None or _f15["rules"] is None or _f15["free"] is None:
+        st.warning("The 15-feedstock frontier could not be built right now. Showing the 4-feedstock frontier.")
+        _f15 = None
+
+if _f15 is not None:
+    _fr, _ff = _f15["rules"], _f15["free"]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(_ff["vols"], _ff["rets"], label="Unconstrained (budget + long-only)", linestyle="--", color="#9A9A9A", linewidth=1.6)
+    ax.plot(_fr["vols"], _fr["rets"], label="Constrained (RED2 + concentration cap)", color="#1F5FA8", linewidth=2.6)
+    if _ff["mv"]:
+        ax.scatter([_ff["mv"][0]], [_ff["mv"][1]], color="gray", s=45, zorder=5, label="Safest mix with no rules")
+    if _fr["mv"]:
+        ax.scatter([_fr["mv"][0]], [_fr["mv"][1]], color="#D62728", s=90, zorder=6, edgecolor="black",
+                   label="Safest mix with your rules (15 feedstocks)")
+        ax.annotate(f"Safest mix with your rules\n{_fr['mv'][0]:.2%} daily risk", (_fr["mv"][0], _fr["mv"][1]),
+                    xytext=(36, 42), textcoords="offset points", arrowprops=dict(arrowstyle="-", color="#D62728", lw=0.8), bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#F2C4C4", alpha=0.95), fontsize=9, color="#D62728", va="center")
+    _mv4 = min_variance_portfolio(constrained_frontier)
+    ax.scatter([_mv4["volatility"]], [_mv4["return"]], marker="x", color="#D62728", s=70, zorder=6,
+               label=f"Our 4-feedstock recommendation ({_mv4['volatility']:.2%})")
+    ax.set_xlabel("Daily cost volatility (how much your costs move each day)")
+    ax.set_ylabel("Expected daily price change")
+    ax.set_title(f"Cost of your real-world rules ({_f15['n']} feedstocks)")
+    ax.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    _beautify_frontier(ax)
+    st.pyplot(fig)
+    st.caption(
+        f"The same chart with {_f15['n']} feedstocks (weekly data ÷ 5 to compare with daily numbers, Ledoit-Wolf "
+        f"shrinkage {_f15['shrink']:.0%}). Both curves move to the left: with more feedstocks to choose from, the "
+        "safest mix is calmer, with or without your rules. The red cross is our 4-feedstock recommendation. "
+        "Average price changes over a few years are noisy, so the shape of the upper and lower parts can move a "
+        "lot when the data changes; the left end (the safest mix) is the reliable part."
+    )
+else:
+    fig, ax = plt.subplots(figsize=(9, 5))
+    valid_u = unconstrained_frontier["success"]
+    ax.plot(unconstrained_frontier["volatilities"][valid_u], unconstrained_frontier["returns"][valid_u],
+            label="Unconstrained (budget + long-only)", linestyle="--", color="#9A9A9A", linewidth=1.6)
+    valid_c = constrained_frontier["success"]
+    ax.plot(constrained_frontier["volatilities"][valid_c], constrained_frontier["returns"][valid_c],
+            label="Constrained (RED2 + concentration cap)", color="#1F5FA8", linewidth=2.6)
+    _mv_c = min_variance_portfolio(constrained_frontier)
+    _mv_u = min_variance_portfolio(unconstrained_frontier)
+    ax.scatter([_mv_u["volatility"]], [_mv_u["return"]], color="gray", s=45, zorder=5,
+               label="Safest mix with no rules")
+    ax.scatter([_mv_c["volatility"]], [_mv_c["return"]], color="#D62728", s=90, zorder=6, edgecolor="black",
+               label="Our recommendation: safest mix with your rules")
+    ax.annotate(f"Our recommendation\n{_mv_c['volatility']:.2%} daily risk",
+                (_mv_c["volatility"], _mv_c["return"]), xytext=(30, 28), textcoords="offset points", arrowprops=dict(arrowstyle="-", color="#D62728", lw=0.8), bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#F2C4C4", alpha=0.95),
+                fontsize=9, color="#D62728", va="center")
+    ax.set_xlabel("Daily cost volatility (how much your costs move each day)")
+    ax.set_ylabel("Expected daily price change")
+    ax.set_title("Cost of your real-world rules")
+    ax.xaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    _beautify_frontier(ax)
+    st.pyplot(fig)
 
 st.caption(
     "The red dot is our recommendation: the safest mix that follows your rules. The grey dot is the "
@@ -419,118 +661,6 @@ with st.expander("Explore the curves point by point"):
                "On the blue line, moving away from the red dot only adds risk. The grey dot breaks your cap: "
                "it puts most of your money in live cattle. The flat end of the grey line is the mix sliding "
                "toward 100% Darling, which your cap forbids.")
-
-
-# --- 9-feedstock mix for the "4 / 9 feedstocks" switch (same method as the extended box) ---
-
-_X9_FEEDS = {  # name: (source, file or ticker, waste-based?, tallow group?)
-    "UCO (Rotterdam gasoil)": ("csv", "data/gasoil_ice.csv", True, False),
-    "Tallow (live cattle)": ("yahoo", "LE=F", True, True),
-    "Tallow (Darling)": ("yahoo", "DAR", True, True),
-    "Pork fat / white grease (lean hogs)": ("yahoo", "HE=F", True, False),
-    "Soybean oil": ("yahoo", "ZL=F", False, False),
-    "Rapeseed (Euronext)": ("csv", "data/rapeseed_euronext.csv", False, False),
-    "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
-    "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
-    "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
-    "Soybeans (CBOT)": ("yahoo", "ZS=F", False, False),
-    "UCO (heating oil)": ("yahoo", "HO=F", True, False),
-    "Tallow (feeder cattle)": ("yahoo", "GF=F", True, True),
-    "Neste (company proxy)": ("yahoo", "NESTE.HE", False, False),
-    "Verbio (company proxy)": ("yahoo", "VBK.DE", False, False),
-    "Bunge (company proxy)": ("yahoo", "BG", False, False),
-}
-_X9_SHORT = {
-    "UCO (Rotterdam gasoil)": "UCO\n(gasoil)", "Tallow (live cattle)": "Tallow\n(cattle)",
-    "Tallow (Darling)": "Tallow\n(Darling)", "Pork fat / white grease (lean hogs)": "Pork fat\n(hogs)",
-    "Soybean oil": "Soybean\noil", "Rapeseed (Euronext)": "Rapeseed\n(Euronext)", "Canola (ICE)": "Canola\n(ICE)",
-    "Palm oil (Bursa Malaysia)": "Palm oil\n(Bursa)", "Distillers corn oil (corn)": "Corn oil\n(corn)",
-    "Soybeans (CBOT)": "Soybeans\n(CBOT)", "UCO (heating oil)": "UCO\n(heat. oil)",
-    "Neste (company proxy)": "Neste\n(stock)", "Verbio (company proxy)": "Verbio\n(stock)",
-    "Bunge (company proxy)": "Bunge\n(stock)",
-    "Tallow (feeder cattle)": "Tallow\n(feeder)", "Rapeseed oil (ZCE China)": "Rapes. oil\n(China)",
-    "Yellow grease (USDA)": "Yellow\ngrease",
-}
-_X9_COLORS = {
-    "UCO (Rotterdam gasoil)": "#C0392B", "Tallow (live cattle)": "#8E5FB0", "Tallow (Darling)": "#8B4513",
-    "Pork fat / white grease (lean hogs)": "#D98880", "Soybean oil": "#4A9A34", "Rapeseed (Euronext)": "#3A6BA5",
-    "Canola (ICE)": "#D4AC0D", "Palm oil (Bursa Malaysia)": "#E67E22", "Distillers corn oil (corn)": "#7F8C8D",
-    "Soybeans (CBOT)": "#1F4E79", "UCO (heating oil)": "#E74C3C", "Tallow (feeder cattle)": "#5B2C6F",
-    "Rapeseed oil (ZCE China)": "#5DADE2", "Yellow grease (USDA)": "#F4D03F",
-    "Neste (company proxy)": "#16A085", "Verbio (company proxy)": "#A3C639", "Bunge (company proxy)": "#B9770E",
-}
-
-
-@st.cache_data(ttl=86400, show_spinner="Preparing the 9-feedstock mix...")
-def _x9_mix(years, red, cap, feeds_key=(), goal="minvar"):
-    import yfinance as yf
-    from scipy.optimize import minimize as _min
-    end = pd.Timestamp.today().normalize()
-    start = end - pd.DateOffset(years=years)
-    prices, missing = {}, []
-    for name, (src, ref, _w, _t) in _X9_FEEDS.items():
-        sr = None
-        try:
-            if src == "csv":
-                d = pd.read_csv(ref, thousands=",")
-                d["Date"] = pd.to_datetime(d["Date"], format="%m/%d/%Y")
-                sr = d.set_index("Date").sort_index()["Price"].astype(float)
-                sr = sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
-            else:
-                d = yf.download(ref, start=start, end=end, auto_adjust=True, progress=False, threads=False)
-                if d is not None and not d.empty:
-                    c = d["Close"]
-                    sr = (c.iloc[:, 0] if isinstance(c, pd.DataFrame) else c).dropna()
-        except Exception:
-            sr = None
-        if sr is None or len(sr) < 250:
-            missing.append(name)
-        else:
-            prices[name] = sr
-    if len(prices) < 4:
-        return None
-    px = pd.DataFrame(prices).sort_index()
-    px = px[px.index >= px.dropna(how="any").index.min()].ffill(limit=5).dropna()
-    r = px.resample("W-FRI").last().pct_change().dropna()
-    if "Rapeseed (Euronext)" in r.columns:
-        r = r[~(r.index.month.isin([2, 5, 8, 11]) & (r.index.day <= 9))]
-    names = list(r.columns)
-    n = len(names)
-    X = r.values - r.values.mean(axis=0)
-    T = X.shape[0]
-    emp = X.T @ X / T
-    mu = np.trace(emp) / n
-    delta = ((emp - mu * np.eye(n)) ** 2).sum() / n
-    beta = min(((X ** 2).T @ (X ** 2) / T - emp ** 2).sum() / (n * T), delta)
-    shrink = float(beta / delta) if delta > 0 else 0.0
-    S_shrunk = (1 - shrink) * emp + shrink * mu * np.eye(n)
-    waste = np.array([1.0 if _X9_FEEDS[k][2] else 0.0 for k in names])
-    tallow = np.array([1.0 if _X9_FEEDS[k][3] else 0.0 for k in names])
-    cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
-            {"type": "ineq", "fun": lambda x: x @ waste - red},
-            {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
-    res = _min(lambda x: x @ S_shrunk @ x, np.ones(n) / n, method="SLSQP", bounds=[(0.0, cap)] * n,
-               constraints=cons, options={"maxiter": 1000, "ftol": 1e-14})
-    if not res.success:
-        return None
-    w = np.clip(res.x, 0, None)
-    mu = r.mean().values  # average weekly price change of each feedstock
-    used = "minvar"
-    if goal == "sharpe":
-        # Sharpe-equivalent (rf = 0): highest average price change per unit of risk, same rules, shrunk covariance
-        def _neg_sr(x):
-            return -(x @ mu) / np.sqrt(max(x @ S_shrunk @ x, 1e-18))
-        best = None
-        for x0 in (w / w.sum(), np.ones(n) / n):
-            rs = _min(_neg_sr, x0, method="SLSQP", bounds=[(0.0, cap)] * n, constraints=cons,
-                      options={"maxiter": 1000, "ftol": 1e-12})
-            if rs.success and (best is None or rs.fun < best.fun):
-                best = rs
-        if best is not None and -best.fun > 0:
-            w = np.clip(best.x, 0, None)
-            used = "sharpe"
-    return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
-            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used}
 
 
 # --- recommended allocation ------------------------------------------------
