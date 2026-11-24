@@ -936,6 +936,262 @@ with st.expander("Your benchmark: stay close to what you already buy (tracking e
         )
 
 
+# --- your price views: Black-Litterman (LN 4) ------------------------------------
+
+with st.expander("Your price views: Black-Litterman (tell us what you expect)"):
+    from scipy.optimize import minimize as _vminimize
+    from constraints import build_all_constraints as _vbac, get_bounds as _vgb
+
+    st.markdown(
+        "Our main mix ignores price forecasts. Here **you** can add your own views, for example *“UCO will rise "
+        "with the Dutch 2026 rules”*, and say how sure you are. The **Black-Litterman** model blends your views "
+        "with a neutral starting point, and the tool then avoids the feedstocks you expect to get expensive, "
+        "always with your three rules."
+    )
+    _vtk = list(PORTFOLIO_TICKERS)
+    _vfeed = {"No view": None, "UCO": "HO=F", "Tallow": "LE=F", "Rapeseed oil": "ZS=F", "Soybean oil": "ZL=F"}
+    _vc1, _vc2 = st.columns(2)
+    with _vc1:
+        _v1f = st.selectbox("View 1: feedstock", list(_vfeed), index=1, key="v1_feed")
+        _v1q = st.number_input("View 1: expected price change over the next year (%)", -50.0, 50.0, 20.0, 5.0,
+                               key="v1_q")
+    with _vc2:
+        _v2f = st.selectbox("View 2: feedstock", list(_vfeed), index=0, key="v2_feed")
+        _v2q = st.number_input("View 2: expected price change over the next year (%)", -50.0, 50.0, 0.0, 5.0,
+                               key="v2_q")
+    _vconf = st.slider("How sure are you about your views?", 10, 95, 50, 5, format="%d%%", key="v_conf") / 100
+    _vweight = st.select_slider("How much should your views count against stable costs?",
+                                ["A little", "Medium", "A lot"], value="Medium", key="v_weight")
+    _vgamma = {"A little": 20.0, "Medium": 5.0, "A lot": 2.0}[_vweight]
+
+    _vS = np.asarray(cov_matrix)
+    _vn = len(_vtk)
+    _vtau = 0.05
+    # neutral prior: every feedstock is expected to move by the same average amount (no opinion),
+    # so with no views the answer is exactly our minimum-variance mix
+    _vpi = np.full(_vn, float(np.mean(np.asarray(mean_returns))))
+    _views = [(_vfeed[f], q) for f, q in ((_v1f, _v1q), (_v2f, _v2q)) if _vfeed[f] is not None]
+    if len({t for t, _ in _views}) < len(_views):
+        st.warning("Your two views are on the same feedstock: we only use view 1.")
+        _views = _views[:1]
+    if _views:
+        _vP = np.array([np.eye(_vn)[_vtk.index(t)] for t, _ in _views])
+        _vQ = np.array([q / 100 / 252 for _, q in _views])
+        _vOm = np.diag(np.diag(_vP @ (_vtau * _vS) @ _vP.T)) * (1 - _vconf) / _vconf
+        _vA = np.linalg.inv(np.linalg.inv(_vtau * _vS) + _vP.T @ np.linalg.inv(_vOm) @ _vP)
+        _vmu = _vA @ (np.linalg.inv(_vtau * _vS) @ _vpi + _vP.T @ np.linalg.inv(_vOm) @ _vQ)
+    else:
+        _vmu = _vpi.copy()
+
+    @st.cache_data(show_spinner=False)
+    def _v_solve(cov, mu, gamma, red, cap, n):
+        # a buyer wants low expected price increases AND stable costs: minimize x'mu + gamma/2 x'Sx
+        res = _vminimize(lambda x: x @ mu + gamma / 2 * (x @ cov @ x), np.ones(n) / n, method="SLSQP",
+                         bounds=_vgb(concentration_cap=cap, n_assets=n),
+                         constraints=_vbac(sustainability_min=red, concentration_cap=cap),
+                         options={"maxiter": 500, "ftol": 1e-14})
+        return res.x if res.success else None
+
+    _vx = _v_solve(_vS, _vmu, _vgamma, sustainability_min, concentration_cap, _vn)
+    _vx0 = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+    if _vx is None:
+        st.error("No mix follows your rules here. Try a lower waste minimum or a higher cap.")
+    else:
+        def _vrisk(x):
+            return float(np.sqrt(x @ _vS @ x))
+
+        def _vyear(x, m):
+            return float(x @ m) * 252
+
+        vm1, vm2, vm3 = st.columns(3)
+        vm1.metric("Expected price change of your mix (1 year)", f"{_vyear(_vx, _vmu):+.1%}",
+                   delta=f"{(_vyear(_vx, _vmu) - _vyear(_vx0, _vmu)) * 100:+.1f} pts vs our main mix",
+                   delta_color="inverse", help="Using the blended (Black-Litterman) expected price changes.")
+        vm2.metric("Daily cost risk", f"{_vrisk(_vx):.2%}",
+                   delta=f"{(_vrisk(_vx) - _vrisk(_vx0)) * 100:+.2f} pts vs our main mix", delta_color="inverse")
+        vm3.metric("Cost-at-Risk (95%, 1 month)", f"${procurement_budget * _vrisk(_vx) * np.sqrt(21) * 1.645:,.0f}")
+
+        st.dataframe(pd.DataFrame({
+            "Neutral expected change (1 year)": [f"{v * 252:+.1%}" for v in _vpi],
+            "After your views (1 year)": [f"{v * 252:+.1%}" for v in _vmu],
+            "Our main mix": [f"{v:.1%}" for v in _vx0],
+            "Mix with your views": [f"{v:.1%}" for v in _vx],
+        }, index=[TICKER_LABELS[t] for t in _vtk]))
+        st.caption(
+            "How it works: we start from a neutral view (every feedstock is expected to move by the same average "
+            "amount, so with no views you get our main mix). Black-Litterman then blends in your views, weighted "
+            "by how sure you are: μ_BL = [(τΣ)⁻¹ + PᵀΩ⁻¹P]⁻¹ [(τΣ)⁻¹π + PᵀΩ⁻¹Q], with τ = 0.05. A view on one "
+            "feedstock also moves the feedstocks that move with it (through the covariance matrix). As a buyer, "
+            "we then minimize expected price change + risk. Your rules still hold: for example, the waste "
+            "minimum keeps some UCO even if you expect it to rise. Views are opinions, not forecasts we make."
+        )
+
+
+# --- backtest: does the strategy work out of sample? -------------------------------
+
+with st.expander("Backtest: does our strategy work on prices it has not seen?"):
+    from scipy.optimize import minimize as _tminimize
+    from constraints import build_all_constraints as _tbac, get_bounds as _tgb
+
+    st.markdown(
+        "Our main mix is computed on five years of prices and judged on the same prices (in-sample). Here we "
+        "do it the honest way: **every month**, we recompute the mix using **only the past year**, buy it for "
+        "the next month, and record how much your costs really moved. We compare it with a simple equal split."
+    )
+
+    @st.cache_data(show_spinner="Running the monthly backtest...")
+    def _bt_run(rets, red, cap, window):
+        tk = list(rets.columns)
+        n = len(tk)
+        month_ends = rets.resample("ME").last().index
+        out_mv, out_eq, weights = [], [], []
+        eq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in tk])
+        for i in range(len(month_ends) - 1):
+            start, end = month_ends[i], month_ends[i + 1]
+            past = rets.loc[:start].tail(window)
+            if len(past) < window * 0.9:
+                continue
+            cov = past.cov().values
+            res = _tminimize(lambda x: x @ cov @ x, np.ones(n) / n, method="SLSQP",
+                             bounds=_tgb(concentration_cap=cap, n_assets=n),
+                             constraints=_tbac(sustainability_min=red, concentration_cap=cap),
+                             options={"maxiter": 500, "ftol": 1e-12})
+            if not res.success:
+                continue
+            nxt = rets.loc[(rets.index > start) & (rets.index <= end)]
+            out_mv.append(nxt.values @ res.x)
+            out_eq.append(nxt.values @ eq)
+            weights.append(pd.Series(res.x, index=tk, name=end))
+        if not out_mv:
+            return None
+        return np.concatenate(out_mv), np.concatenate(out_eq), pd.DataFrame(weights)
+
+    _bt_window = 252
+    _bt = _bt_run(returns[PORTFOLIO_TICKERS], sustainability_min, concentration_cap, _bt_window)
+    if _bt is None:
+        st.info("Not enough data for a backtest: choose at least 2 years in the sidebar.")
+    else:
+        _bt_mv, _bt_ew, _bt_w = _bt
+        _bt_vol_mv, _bt_vol_ew = float(np.std(_bt_mv)), float(np.std(_bt_ew))
+        _bt_in = float(min_variance_portfolio(constrained_frontier)["volatility"])
+        bt1, bt2, bt3 = st.columns(3)
+        bt1.metric("Our strategy, out of sample", f"{_bt_vol_mv:.2%} a day",
+                   help="Daily cost volatility actually realized, month after month, with the mix recomputed "
+                        "each month on the past year only.")
+        bt2.metric("Equal split (25% each)", f"{_bt_vol_ew:.2%} a day",
+                   delta=f"{(_bt_vol_ew / _bt_vol_mv - 1):+.0%} more movement", delta_color="inverse")
+        bt3.metric("In-sample estimate (main mix)", f"{_bt_in:.2%} a day",
+                   help="The number the main chart shows, computed on the same data it is judged on.")
+
+        _bt_cum = pd.DataFrame({"Our strategy (rebalanced monthly)": np.cumprod(1 + _bt_mv) * 100,
+                                "Equal split": np.cumprod(1 + _bt_ew) * 100})
+        fig_bt, ax_bt = plt.subplots(figsize=(9, 3.6))
+        ax_bt.plot(_bt_cum.index, _bt_cum.iloc[:, 0], color="#D62728", linewidth=1.6, label=_bt_cum.columns[0])
+        ax_bt.plot(_bt_cum.index, _bt_cum.iloc[:, 1], color="gray", linewidth=1.2, linestyle="--",
+                   label=_bt_cum.columns[1])
+        ax_bt.set_xlabel("Trading days in the test (out of sample)")
+        ax_bt.set_ylabel("Cost index (start = 100)")
+        ax_bt.set_title("Your feedstock cost, month after month, out of sample")
+        ax_bt.legend(fontsize=8)
+        fig_bt.tight_layout()
+        st.pyplot(fig_bt)
+
+        st.markdown("**How the mix changed each month** (recomputed on the past year only):")
+        st.area_chart(_bt_w.rename(columns=TICKER_LABELS))
+        st.caption(
+            f"Test: {len(_bt_w)} monthly rebalances, each using only the previous {_bt_window} trading days. "
+            "A lower line is not the goal (we can't control price trends); what matters is how much the cost "
+            "moves. If the out-of-sample volatility is close to the in-sample estimate, the strategy is not "
+            "just fitted to the past. The equal split uses 25% of each real feedstock, which follows your rules "
+            "at the default settings."
+        )
+
+
+# --- other risk strategies: minimum CVaR and risk parity ----------------------------
+
+with st.expander("Other strategies: minimum CVaR and risk parity (for comparison)"):
+    from scipy.optimize import minimize as _cminimize, linprog as _clinprog
+    from constraints import get_bounds as _cgb, build_all_constraints as _cbac
+
+    st.markdown(
+        "Two well-known alternatives, with your same three rules. **Minimum CVaR** protects you against the "
+        "worst days (crises like 2022) instead of average swings. **Risk parity** (equal risk contribution, "
+        "LN 5) makes each feedstock bring the same share of your risk."
+    )
+    _ctk = list(PORTFOLIO_TICKERS)
+    _cn = len(_ctk)
+    _cR = returns[PORTFOLIO_TICKERS].values
+    _cS = np.asarray(cov_matrix)
+    _cbeta = 0.95
+
+    @st.cache_data(show_spinner="Solving minimum CVaR...")
+    def _c_min_cvar(R, red, cap, beta):
+        # Rockafellar-Uryasev linear program; loss = cost increase = x'r (a buyer loses when prices rise)
+        T, n = R.shape
+        tk = list(PORTFOLIO_TICKERS)
+        c = np.concatenate([np.zeros(n), [1.0], np.full(T, 1.0 / ((1 - beta) * T))])
+        A_ub = np.hstack([R, -np.ones((T, 1)), -np.eye(T)])
+        b_ub = np.zeros(T)
+        waste = np.array([1.0 if t in WASTE_BASED else 0.0 for t in tk])
+        tallow = np.array([1.0 if t in ("LE=F", "DAR") else 0.0 for t in tk])
+        A_ub = np.vstack([A_ub, np.concatenate([-waste, [0.0], np.zeros(T)]),
+                          np.concatenate([tallow, [0.0], np.zeros(T)])])
+        b_ub = np.concatenate([b_ub, [-red, cap]])
+        A_eq = np.concatenate([np.ones(n), [0.0], np.zeros(T)])[None, :]
+        bounds = [(0, cap)] * n + [(None, None)] + [(0, None)] * T
+        res = _clinprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=[1.0], bounds=bounds, method="highs")
+        return res.x[:n] if res.success else None
+
+    @st.cache_data(show_spinner="Solving risk parity...")
+    def _c_erc(cov, red, cap):
+        # equal risk contribution among the 4 real feedstocks (Darling kept at 0), with your rules
+        tk = list(PORTFOLIO_TICKERS)
+        n = len(tk)
+        live = [i for i, t in enumerate(tk) if t != "DAR"]
+
+        def obj(x):
+            v = x @ cov @ x
+            rc = x * (cov @ x) / v
+            return float(sum((rc[i] - 1 / len(live)) ** 2 for i in live))
+        bnds = [(0.0, 0.0) if t == "DAR" else (0.01, cap) for t in tk]
+        x0 = np.array([0.0 if t == "DAR" else 1 / len(live) for t in tk])
+        res = _cminimize(obj, x0, method="SLSQP", bounds=bnds,
+                         constraints=_cbac(sustainability_min=red, concentration_cap=cap),
+                         options={"maxiter": 1000, "ftol": 1e-14})
+        return res.x if res.success else None
+
+    _cmv = np.asarray(min_variance_portfolio(constrained_frontier)["weights"])
+    _ccv = _c_min_cvar(_cR, sustainability_min, concentration_cap, _cbeta)
+    _crp = _c_erc(_cS, sustainability_min, concentration_cap)
+    _ceq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in _ctk])
+
+    def _c_stats(x):
+        if x is None:
+            return ["—"] * (_cn + 4)
+        pnl = _cR @ x
+        var = np.quantile(pnl, _cbeta)
+        cvar = pnl[pnl >= var].mean()
+        rc = x * (_cS @ x) / (x @ _cS @ x)
+        return ([f"{max(v, 0.0):.1%}" for v in x] + [f"{np.sqrt(x @ _cS @ x):.2%}", f"{cvar:.2%}",
+                f"${procurement_budget * cvar:,.0f}", f"{rc.max():.0%}"])
+
+    st.dataframe(pd.DataFrame({
+        "Minimum variance (ours)": _c_stats(_cmv),
+        "Minimum CVaR": _c_stats(_ccv),
+        "Risk parity": _c_stats(_crp),
+        "Equal split": _c_stats(_ceq),
+    }, index=[TICKER_LABELS[t] for t in _ctk] + ["Daily cost risk", "CVaR 95% (average of the worst 5% days)",
+                                                "CVaR in money (1 bad day)", "Largest risk contribution"]))
+    st.caption(
+        "CVaR 95% = the average cost increase on the worst 5% of days (historical, no normal assumption), "
+        "minimized with the Rockafellar-Uryasev linear program. Risk parity gives each real feedstock the same "
+        "share of risk (Darling kept at 0, as tallow is already covered by live cattle). As in LN 5, minimum "
+        "variance has the lowest daily risk, risk parity sits between it and the equal split. We keep minimum "
+        "variance as our recommendation: these two strategies don't use any input from you, and on your data "
+        "they give similar or higher risk."
+    )
+
+
 # --- rapeseed basis-risk check: ZS=F (US soybeans) vs Euronext rapeseed -------
 
 with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Euronext)"):
