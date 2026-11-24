@@ -368,7 +368,7 @@ def _x9_mix(years, red, cap, feeds_key=(), goal="minvar"):
             w = np.clip(best.x, 0, None)
             used = "sharpe"
     return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
-            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used, "Ss": S_shrunk}
+            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used, "Ss": S_shrunk, "r": r}
 
 @st.cache_data(ttl=86400, show_spinner="Building the 15-feedstock frontier...")
 def _x15_frontier(years, red, cap, feeds_key=(), npts=50):
@@ -1376,76 +1376,202 @@ with st.expander("Backtest: does our strategy work on prices it has not seen?"):
 
     st.markdown(
         "Our main mix is computed on five years of prices and judged on the same prices (in-sample). Here we "
-        "do it the honest way: **every month**, we recompute the mix using **only the past year**, buy it for "
+        "do it the honest way: **every month**, we recompute the mix using **only the past data**, buy it for "
         "the next month, and record how much your costs really moved. We compare it with a simple equal split."
     )
+    _bt_view = st.radio("Feedstocks the tool can buy:",
+                        ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                        horizontal=True, key="bt15")
 
-    @st.cache_data(show_spinner="Running the monthly backtest...")
-    def _bt_run(rets, red, cap, window):
-        tk = list(rets.columns)
-        n = len(tk)
-        month_ends = rets.resample("ME").last().index
-        out_mv, out_eq, weights = [], [], []
-        eq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in tk])
-        for i in range(len(month_ends) - 1):
-            start, end = month_ends[i], month_ends[i + 1]
-            past = rets.loc[:start].tail(window)
-            if len(past) < window * 0.9:
-                continue
-            cov = past.cov().values
-            res = _tminimize(lambda x: x @ cov @ x, np.ones(n) / n, method="SLSQP",
-                             bounds=_tgb(concentration_cap=cap, n_assets=n),
-                             constraints=_tbac(sustainability_min=red, concentration_cap=cap),
-                             options={"maxiter": 500, "ftol": 1e-12})
-            if not res.success:
-                continue
-            nxt = rets.loc[(rets.index > start) & (rets.index <= end)]
-            out_mv.append(nxt.values @ res.x)
-            out_eq.append(nxt.values @ eq)
-            weights.append(pd.Series(res.x, index=tk, name=end))
-        if not out_mv:
-            return None
-        return np.concatenate(out_mv), np.concatenate(out_eq), pd.DataFrame(weights)
+    def _bt_mixchart(wdf, colors, labels):
+        # one bar per month, stacked to 100%, so the change in the mix is easy to read
+        wdf = wdf.clip(lower=0)
+        wdf = wdf.loc[:, wdf.max() > 0.005]
+        fig_w, ax_w = plt.subplots(figsize=(9, 3.4))
+        bottom = np.zeros(len(wdf))
+        xs = np.arange(len(wdf))
+        for c in wdf.columns:
+            ax_w.bar(xs, wdf[c].values, bottom=bottom, width=0.9, color=colors.get(c, "#999999"),
+                     label=labels.get(c, c), edgecolor="white", linewidth=0.3)
+            bottom += wdf[c].values
+        step = max(1, len(wdf) // 8)
+        ax_w.set_xticks(xs[::step])
+        ax_w.set_xticklabels([d.strftime("%b %Y") for d in wdf.index[::step]], fontsize=8)
+        ax_w.set_ylim(0, 1)
+        ax_w.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=0))
+        ax_w.set_ylabel("Share of your budget")
+        for side in ("top", "right"):
+            ax_w.spines[side].set_visible(False)
+        ax_w.legend(fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False)
+        fig_w.tight_layout()
+        st.pyplot(fig_w)
 
-    _bt_window = 252
-    _bt = _bt_run(returns[PORTFOLIO_TICKERS], sustainability_min, concentration_cap, _bt_window)
-    if _bt is None:
-        st.info("Not enough data for a backtest: choose at least 2 years in the sidebar.")
-    else:
-        _bt_mv, _bt_ew, _bt_w = _bt
-        _bt_vol_mv, _bt_vol_ew = float(np.std(_bt_mv)), float(np.std(_bt_ew))
-        _bt_in = float(min_variance_portfolio(constrained_frontier)["volatility"])
-        bt1, bt2, bt3 = st.columns(3)
-        bt1.metric("Our strategy, out of sample", f"{_bt_vol_mv:.2%} a day",
-                   help="Daily cost volatility actually realized, month after month, with the mix recomputed "
-                        "each month on the past year only.")
-        bt2.metric("Equal split (25% each)", f"{_bt_vol_ew:.2%} a day",
-                   delta=f"{(_bt_vol_ew / _bt_vol_mv - 1):+.0%} more movement", delta_color="inverse")
-        bt3.metric("In-sample estimate (main mix)", f"{_bt_in:.2%} a day",
-                   help="The number the main chart shows, computed on the same data it is judged on.")
-
-        _bt_cum = pd.DataFrame({"Our strategy (rebalanced monthly)": np.cumprod(1 + _bt_mv) * 100,
-                                "Equal split": np.cumprod(1 + _bt_ew) * 100})
+    def _bt_linechart(series, title):
         fig_bt, ax_bt = plt.subplots(figsize=(9, 3.6))
-        ax_bt.plot(_bt_cum.index, _bt_cum.iloc[:, 0], color="#D62728", linewidth=1.6, label=_bt_cum.columns[0])
-        ax_bt.plot(_bt_cum.index, _bt_cum.iloc[:, 1], color="gray", linewidth=1.2, linestyle="--",
-                   label=_bt_cum.columns[1])
-        ax_bt.set_xlabel("Trading days in the test (out of sample)")
+        styles = [("#D62728", 1.6, "-"), ("#1F5FA8", 1.3, "-"), ("gray", 1.2, "--")]
+        for (name, vals), (col, lw, ls) in zip(series.items(), styles):
+            ax_bt.plot(np.arange(len(vals)), np.cumprod(1 + vals) * 100, color=col, linewidth=lw, linestyle=ls,
+                       label=name)
         ax_bt.set_ylabel("Cost index (start = 100)")
-        ax_bt.set_title("Your feedstock cost, month after month, out of sample")
+        ax_bt.set_title(title)
         ax_bt.legend(fontsize=8)
-        fig_bt.tight_layout()
-        st.pyplot(fig_bt)
+        for side in ("top", "right"):
+            ax_bt.spines[side].set_visible(False)
+        return fig_bt, ax_bt
 
-        st.markdown("**How the mix changed each month** (recomputed on the past year only):")
-        st.area_chart(_bt_w.rename(columns=TICKER_LABELS))
-        st.caption(
-            f"Test: {len(_bt_w)} monthly rebalances, each using only the previous {_bt_window} trading days. "
-            "A lower line is not the goal (we can't control price trends); what matters is how much the cost "
-            "moves. If the out-of-sample volatility is close to the in-sample estimate, the strategy is not "
-            "just fitted to the past. The equal split uses 25% of each real feedstock, which follows your rules "
-            "at the default settings."
-        )
+    _x15b = None
+    if _bt_view.startswith("Extended"):
+        _x15b = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        if _x15b is None or "r" not in _x15b:
+            st.warning("The 15-feedstock universe could not be built right now. Showing 4 feedstocks.")
+            _x15b = None
+
+    if _x15b is None:
+        @st.cache_data(show_spinner="Running the monthly backtest...")
+        def _bt_run(rets, red, cap, window):
+            tk = list(rets.columns)
+            n = len(tk)
+            month_ends = rets.resample("ME").last().index
+            out_mv, out_eq, weights = [], [], []
+            eq = np.array([0.25 if t in ("ZL=F", "ZS=F", "HO=F", "LE=F") else 0.0 for t in tk])
+            for i in range(len(month_ends) - 1):
+                start, end = month_ends[i], month_ends[i + 1]
+                past = rets.loc[:start].tail(window)
+                if len(past) < window * 0.9:
+                    continue
+                cov = past.cov().values
+                res = _tminimize(lambda x: x @ cov @ x, np.ones(n) / n, method="SLSQP",
+                                 bounds=_tgb(concentration_cap=cap, n_assets=n),
+                                 constraints=_tbac(sustainability_min=red, concentration_cap=cap),
+                                 options={"maxiter": 500, "ftol": 1e-12})
+                if not res.success:
+                    continue
+                nxt = rets.loc[(rets.index > start) & (rets.index <= end)]
+                out_mv.append(nxt.values @ res.x)
+                out_eq.append(nxt.values @ eq)
+                weights.append(pd.Series(res.x, index=tk, name=end))
+            if not out_mv:
+                return None
+            return np.concatenate(out_mv), np.concatenate(out_eq), pd.DataFrame(weights)
+
+        _bt_window = 252
+        _bt = _bt_run(returns[PORTFOLIO_TICKERS], sustainability_min, concentration_cap, _bt_window)
+        if _bt is None:
+            st.info("Not enough data for a backtest: choose at least 2 years in the sidebar.")
+        else:
+            _bt_mv, _bt_ew, _bt_w = _bt
+            _bt_vol_mv, _bt_vol_ew = float(np.std(_bt_mv)), float(np.std(_bt_ew))
+            _bt_in = float(min_variance_portfolio(constrained_frontier)["volatility"])
+            bt1, bt2, bt3 = st.columns(3)
+            bt1.metric("Our strategy, out of sample", f"{_bt_vol_mv:.2%} a day",
+                       help="Daily cost volatility actually realized, month after month, with the mix recomputed "
+                            "each month on the past year only.")
+            bt2.metric("Equal split (25% each)", f"{_bt_vol_ew:.2%} a day",
+                       delta=f"{(_bt_vol_ew / _bt_vol_mv - 1):+.0%} more movement", delta_color="inverse")
+            bt3.metric("In-sample estimate (main mix)", f"{_bt_in:.2%} a day",
+                       help="The number the main chart shows, computed on the same data it is judged on.")
+
+            fig_bt, ax_bt = _bt_linechart({"Our strategy (rebalanced monthly)": _bt_mv, "Equal split": _bt_ew},
+                                          "Your feedstock cost, month after month, out of sample")
+            ax_bt.set_xlabel("Trading days in the test (out of sample)")
+            fig_bt.tight_layout()
+            st.pyplot(fig_bt)
+
+            st.markdown("**How the mix changed each month** (recomputed on the past year only):")
+            _bt_mixchart(_bt_w, TICKER_COLORS, TICKER_LABELS)
+            st.caption(
+                f"Test: {len(_bt_w)} monthly rebalances, each using only the previous {_bt_window} trading days. "
+                "A lower line is not the goal (we can't control price trends); what matters is how much the cost "
+                "moves. If the out-of-sample volatility is close to the in-sample estimate, the strategy is not "
+                "just fitted to the past. The equal split uses 25% of each real feedstock, which follows your rules "
+                "at the default settings."
+            )
+    else:
+        @st.cache_data(show_spinner="Running the 15-feedstock backtest...")
+        def _bt_run15(rets, red, cap, window, waste, tallow):
+            n = rets.shape[1]
+            cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                    {"type": "ineq", "fun": lambda x: x @ waste - red},
+                    {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+
+            def solve(cov):
+                res = _tminimize(lambda x: x @ cov @ x, np.ones(n) / n, method="SLSQP",
+                                 bounds=[(0.0, cap)] * n, constraints=cons,
+                                 options={"maxiter": 1000, "ftol": 1e-14})
+                return res.x if res.success else None
+
+            def shrink(X):
+                X = X - X.mean(axis=0)
+                T = X.shape[0]
+                emp = X.T @ X / T
+                m = np.trace(emp) / n
+                d = ((emp - m * np.eye(n)) ** 2).sum() / n
+                bt = min(((X ** 2).T @ (X ** 2) / T - emp ** 2).sum() / (n * T), d)
+                sh = bt / d if d > 0 else 0.0
+                return (1 - sh) * emp + sh * m * np.eye(n)
+
+            month_ends = rets.resample("ME").last().index
+            out_s, out_r, out_e, weights = [], [], [], []
+            for i in range(len(month_ends) - 1):
+                start, end = month_ends[i], month_ends[i + 1]
+                past = rets.loc[:start].tail(window)
+                if len(past) < window * 0.9:
+                    continue
+                ws, wr = solve(shrink(past.values)), solve(past.cov().values)
+                if ws is None or wr is None:
+                    continue
+                nxt = rets.loc[(rets.index > start) & (rets.index <= end)].values
+                out_s.append(nxt @ ws)
+                out_r.append(nxt @ wr)
+                out_e.append(nxt @ (np.ones(n) / n))
+                weights.append(pd.Series(ws, index=rets.columns, name=end))
+            if not out_s:
+                return None
+            return np.concatenate(out_s), np.concatenate(out_r), np.concatenate(out_e), pd.DataFrame(weights)
+
+        _bt_window = 104  # two years of weekly prices
+        _bt = _bt_run15(_x15b["r"], float(sustainability_min), float(concentration_cap), _bt_window,
+                        np.asarray(_x15b["waste"]), np.asarray(_x15b["tallow"]))
+        if _bt is None:
+            st.info("Not enough data for a 15-feedstock backtest: choose at least 4 years in the sidebar.")
+        else:
+            _bs, _br, _be, _bt_w = _bt
+            _d = np.sqrt(5)  # weekly volatility ÷ √5 = daily
+            _vs, _vr, _ve = (float(np.std(v)) / _d for v in (_bs, _br, _be))
+            _vin = float(np.sqrt(_x15b["w"] @ _x15b["S"] @ _x15b["w"] / 5))
+            bt1, bt2, bt3, bt4 = st.columns(4)
+            bt1.metric("With shrinkage, out of sample", f"{_vs:.2%} a day",
+                       help="Mix recomputed each month on the past two years, with Ledoit-Wolf shrinkage (LN 3).")
+            bt2.metric("Without shrinkage", f"{_vr:.2%} a day",
+                       delta=f"{(_vr / _vs - 1):+.0%} vs with shrinkage", delta_color="inverse",
+                       help="Same test with the raw covariance matrix.")
+            bt3.metric(f"Equal split (1/{len(_x15b['names'])} each)", f"{_ve:.2%} a day",
+                       delta=f"{(_ve / _vs - 1):+.0%} vs with shrinkage", delta_color="inverse")
+            bt4.metric("In-sample estimate", f"{_vin:.2%} a day",
+                       help="The 15-feedstock minimum-variance mix, judged on the same data it was built on.")
+
+            fig_bt, ax_bt = _bt_linechart({"With shrinkage (rebalanced monthly)": _bs, "Without shrinkage": _br,
+                                           "Equal split": _be},
+                                          f"Your feedstock cost with {len(_x15b['names'])} feedstocks, out of sample")
+            ax_bt.set_xlabel("Weeks in the test (out of sample)")
+            fig_bt.tight_layout()
+            st.pyplot(fig_bt)
+
+            st.markdown("**How the mix changed each month** (with shrinkage, recomputed on the past two years):")
+            _bt_mixchart(_bt_w, _X9_COLORS, {})
+            st.caption(
+                f"Test: {len(_bt_w)} monthly rebalances, each using only the previous {_bt_window} weeks (weekly "
+                "prices; volatility ÷ √5 to compare with daily numbers). With 15 feedstocks the tool estimates 105 "
+                "correlations from two years of data, so we also test shrinkage (LN 3). "
+                + (f"Here shrinkage lowers the out-of-sample risk by {(1 - _vs / _vr):.0%}. " if _vs < _vr * 0.98 else
+                   "Here shrinkage changes almost nothing: with two years of weekly data the raw estimate is already "
+                   "stable enough, so shrinkage is a safety net rather than a gain. ")
+                + (f"The out-of-sample risk ({_vs:.2%}) is close to or below the in-sample estimate ({_vin:.2%}), so "
+                   "the extended mix is not just fitted to the past. " if _vs <= _vin * 1.1 else
+                   f"The out-of-sample risk ({_vs:.2%}) is above the in-sample estimate ({_vin:.2%}): part of the "
+                   "in-sample gain comes from fitting the past. ")
+                + f"The equal split moves {(_ve / _vs - 1):.0%} more: choosing the mix matters more than the method."
+            )
 
 
 # --- other risk strategies: minimum CVaR and risk parity ----------------------------
