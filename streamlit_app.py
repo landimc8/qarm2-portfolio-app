@@ -957,7 +957,9 @@ with st.expander("Basis-risk check: Rotterdam gasoil vs our UCO proxy (HO=F)"):
             "prices move together (89%). But in a crisis, like 2022 or spring 2026, the gap between "
             "them can jump. This checks the New York vs Rotterdam gap only: it does not show how "
             "closely diesel follows your real UCO price, which only your own UCO prices can tell. "
-            "Gasoil prices come from Investing.com, converted from $ per tonne to $ per barrel."
+            "Gasoil prices come from Investing.com, converted from $ per tonne to $ per barrel. This is why the "
+            "extended universe (15 feedstocks) uses the Rotterdam gasoil price directly for UCO, instead of "
+            "New York diesel."
         )
     except FileNotFoundError:
         st.info("Add the ICE gasoil CSV as data/gasoil_ice.csv to show this check.")
