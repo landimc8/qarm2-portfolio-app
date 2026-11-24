@@ -2428,11 +2428,50 @@ with st.expander("What if you change your rules? (cap and waste minimum)"):
 
     _wcov = np.asarray(cov_matrix)
     _wn = len(PORTFOLIO_TICKERS)
+    _wview = st.radio("Feedstocks the tool can buy:",
+                      ["4 feedstocks (main recommendation)", "Extended universe (15 feedstocks)"],
+                      horizontal=True, key="wi15")
     _which = st.radio("Which rule do you want to test?",
                       ["The cap per feedstock", "The waste minimum (RED2)"], horizontal=True, key="wi_rule")
+    _x15w = None
+    if _wview.startswith("Extended"):
+        _x15w = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS))
+        if _x15w is None or "Ss" not in _x15w:
+            st.warning("The 15-feedstock universe could not be built right now. Showing 4 feedstocks.")
+            _x15w = None
+
+    if _x15w is not None:
+        @st.cache_data(show_spinner="Testing other rules with 15 feedstocks...")
+        def _whatif15(cov_opt, cov_risk, red, cap, waste, tallow, start):
+            n = len(waste)
+            cons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                    {"type": "ineq", "fun": lambda x: x @ waste - red},
+                    {"type": "ineq", "fun": lambda x: cap - x @ tallow}]
+            best = None
+            for x0 in (np.ones(n) / n, np.clip(start, 0, cap) / max(np.clip(start, 0, cap).sum(), 1e-9)):
+                r_ = _wminimize(lambda x: x @ cov_opt @ x, x0, method="SLSQP", bounds=[(0.0, cap)] * n,
+                                constraints=cons, options={"maxiter": 1000, "ftol": 1e-15})
+                if best is None or (r_.success and r_.fun < best.fun) or not best.success:
+                    best = r_
+            res = best
+            x = np.clip(res.x, 0, None)
+            ok = (abs(x.sum() - 1) < 1e-4 and x @ waste >= red - 1e-4 and x @ tallow <= cap + 1e-4
+                  and x.max() <= cap + 1e-4)
+            if not (res.success or ok):
+                return None
+            return float(np.sqrt(x @ cov_risk @ x / 5)), float(x @ waste), x
+
+        _w15names = list(_x15w["names"])
+        _w15args = (np.asarray(_x15w["Ss"]), np.asarray(_x15w["S"]))
+        _w15w, _w15t = np.asarray(_x15w["waste"]), np.asarray(_x15w["tallow"])
+
+        def _whatif(cov, red, cap, n):  # same name as the 4-feedstock version, so the table below works for both
+            return _whatif15(*_w15args, float(red), float(cap), _w15w, _w15t, np.asarray(_x15w["w"]))
 
     if _which == "The cap per feedstock":
-        _vals = [0.25, 0.30, 0.35, 0.40, 0.50, 1.00]
+        _vals = ([0.10, 0.15, 0.25, 0.35, 0.50, 1.00] if _x15w is not None else [0.25, 0.30, 0.35, 0.40, 0.50, 1.00])
+        if all(abs(v - concentration_cap) > 1e-9 for v in _vals):
+            _vals = sorted(_vals + [concentration_cap])
         _runs = [(sustainability_min, v) for v in _vals]
         _labels = ["No cap" if v == 1.0 else f"{v:.0%}" for v in _vals]
         _now = concentration_cap
@@ -2455,11 +2494,15 @@ with st.expander("What if you change your rules? (cap and waste minimum)"):
         _vol, _waste, _w = _out
         _car = procurement_budget * _vol * np.sqrt(21) * 1.645
         _diff = "—" if (_mark or _base is None) else f"{(_vol - _base[0]) * 100:+.2f} pts"
-        _real = {"Soybean oil": _w[PORTFOLIO_TICKERS.index("ZL=F")],
-                 "Rapeseed (soybeans)": _w[PORTFOLIO_TICKERS.index("ZS=F")],
-                 "UCO (diesel)": _w[PORTFOLIO_TICKERS.index("HO=F")],
-                 "Tallow (cattle + Darling)": _w[PORTFOLIO_TICKERS.index("LE=F")]
-                                              + _w[PORTFOLIO_TICKERS.index("DAR")]}
+        if _x15w is not None:
+            _real = {k: v for k, v in zip(_w15names, _w) if not _X9_FEEDS[k][3]}
+            _real["Tallow (3 proxies)"] = float(_w @ _w15t)
+        else:
+            _real = {"Soybean oil": _w[PORTFOLIO_TICKERS.index("ZL=F")],
+                     "Rapeseed (soybeans)": _w[PORTFOLIO_TICKERS.index("ZS=F")],
+                     "UCO (diesel)": _w[PORTFOLIO_TICKERS.index("HO=F")],
+                     "Tallow (cattle + Darling)": _w[PORTFOLIO_TICKERS.index("LE=F")]
+                                                  + _w[PORTFOLIO_TICKERS.index("DAR")]}
         _top = max(_real.values())
         _biggest = (f"{_top:.0%} each" if max(_real.values()) - min(_real.values()) < 0.005
                     else f"{max(_real, key=_real.get)} {_top:.0%}")
@@ -2475,6 +2518,11 @@ with st.expander("What if you change your rules? (cap and waste minimum)"):
                    "A tighter cap spreads your supply, but your costs move more.")
     else:
         st.caption("A higher waste minimum is greener. It costs little while the calmest mix already has that much "
-                   "waste, then more and more. Above 2 × the cap (UCO + tallow), no mix is possible.")
+                   "waste, then more and more. "
+                   + ("With 15 feedstocks there are more waste-based options (2 UCO series, pork fat and the tallow "
+                      "group), so a high mandate such as the Dutch 2026 level stays possible and costs less."
+                      if _x15w is not None else "Above 2 × the cap (UCO + tallow), no mix is possible."))
     st.caption("Each row is the calmest mix for those rules, on the same data as the main app. "
-               "Cost-at-Risk uses your budget in the sidebar, 95% and 21 days.")
+               "Cost-at-Risk uses your budget in the sidebar, 95% and 21 days."
+               + (" With 15 feedstocks: weekly prices (risk ÷ √5 for daily) and shrinkage for the optimisation; the "
+                  "three tallow proxies count as one feedstock for the cap." if _x15w is not None else ""))
