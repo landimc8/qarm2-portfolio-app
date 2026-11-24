@@ -1048,6 +1048,218 @@ with st.expander("Other strategies: minimum CVaR and risk parity (for comparison
     )
 
 
+# --- extended universe: 9 feedstocks, shrinkage (LN 3) and a commodity benchmark -----
+
+with st.expander("Extended universe: 9 feedstocks, shrinkage and a commodity benchmark"):
+    from scipy.optimize import minimize as _xminimize
+
+    st.markdown(
+        "A proof-of-concept extension. We widen your feedstock universe from 4 to **9 feedstocks**, use **real "
+        "exchange prices** for UCO (Rotterdam gasoil), rapeseed (Euronext), canola (ICE) and palm oil (Bursa "
+        "Malaysia), and stabilise the covariance "
+        "matrix with **shrinkage** (LN 3). Then we compare your mix with a **commodity market benchmark**."
+    )
+
+    # feedstock: (source, ticker or file, waste-based?, tallow group?)
+    _XFEED = {
+        "UCO (Rotterdam gasoil)": ("csv", "data/gasoil_ice.csv", True, False),
+        "Tallow (live cattle)": ("yahoo", "LE=F", True, True),
+        "Tallow (Darling)": ("yahoo", "DAR", True, True),
+        "Pork fat / white grease (lean hogs)": ("yahoo", "HE=F", True, False),
+        "Soybean oil": ("yahoo", "ZL=F", False, False),
+        "Rapeseed (Euronext)": ("csv", "data/rapeseed_euronext.csv", False, False),
+        "Canola (ICE)": ("csv", "data/canola_ice.csv", False, False),
+        "Palm oil (Bursa Malaysia)": ("csv", "data/palm_bursa.csv", False, False),
+        "Distillers corn oil (corn)": ("yahoo", "ZC=F", False, False),
+    }
+    _XBENCH = {"Bloomberg Commodity Index (BCOM)": ("csv", "data/bcom.csv"),
+               "Bloomberg Agriculture Index (BCOMAG)": ("csv", "data/bcomag.csv"),
+               "Agriculture basket ETF (DBA)": ("yahoo", "DBA"),
+               "Broad commodities ETF (S&P GSCI, GSG)": ("yahoo", "GSG")}
+
+    @st.cache_data(ttl=86400, show_spinner="Downloading the extra prices...")
+    def _x_yahoo(tickers, years):
+        import yfinance as yf
+        end = pd.Timestamp.today().normalize()
+        start = end - pd.DateOffset(years=years)
+        out = {}
+        for t in tickers:
+            try:
+                d = yf.download(t, start=start, end=end, auto_adjust=True, progress=False, threads=False)
+                if d is None or d.empty:
+                    continue
+                c = d["Close"]
+                if isinstance(c, pd.DataFrame):
+                    c = c.iloc[:, 0]
+                out[t] = c.dropna()
+            except Exception:
+                continue
+        return out
+
+    def _x_csv(path, years):
+        d = pd.read_csv(path, thousands=",")
+        d["Date"] = pd.to_datetime(d["Date"], format="%m/%d/%Y")
+        sr = d.set_index("Date").sort_index()["Price"].astype(float)
+        return sr[sr.index >= sr.index.max() - pd.DateOffset(years=years)]
+
+    _xbench_name = st.selectbox("Commodity benchmark", list(_XBENCH), key="x_bench")
+    _xyahoo = tuple(sorted({v[1] for v in _XFEED.values() if v[0] == "yahoo"}
+                          | ({_XBENCH[_xbench_name][1]} if _XBENCH[_xbench_name][0] == "yahoo" else set())))
+    _xdl = _x_yahoo(_xyahoo, int(years_lookback))
+
+    _xprices, _xmissing = {}, []
+    for _name, (_src, _ref, _w, _tg) in _XFEED.items():
+        try:
+            _sr = _x_csv(_ref, int(years_lookback)) if _src == "csv" else _xdl.get(_ref)
+        except FileNotFoundError:
+            _sr = None
+        if _sr is None or len(_sr) < 250:
+            _xmissing.append(_name)
+        else:
+            _xprices[_name] = _sr
+    _xbsrc, _xbref = _XBENCH[_xbench_name]
+    try:
+        _xb_ser = _x_csv(_xbref, int(years_lookback)) if _xbsrc == "csv" else _xdl.get(_xbref)
+    except FileNotFoundError:
+        _xb_ser = None
+
+    if _xmissing:
+        st.warning("Not available right now (skipped): " + ", ".join(_xmissing) + ".")
+    if len(_xprices) < 4:
+        st.error("Too few feedstocks could be loaded to run the extended mix. Try the force-refresh button later.")
+    else:
+        _xp = pd.DataFrame(_xprices).sort_index()
+        _xp = _xp[_xp.index >= _xp.dropna(how="any").index.min()].ffill(limit=5).dropna()
+        # weekly returns (Fridays), as in the basis-risk checks: different exchange holidays and the monthly
+        # futures rolls of the Investing.com series would add fake jumps to daily returns
+        _xr = _xp.resample("W-FRI").last().pct_change().dropna()
+        if "Rapeseed (Euronext)" in _xr.columns:
+            # Euronext rolls in Feb/May/Aug/Nov: drop the weeks that contain a roll
+            _xr = _xr[~(_xr.index.month.isin([2, 5, 8, 11]) & (_xr.index.day <= 9))]
+        _xnames = list(_xr.columns)
+        _xn = len(_xnames)
+        _xS = _xr.cov().values
+
+        # Ledoit-Wolf shrinkage towards a scaled identity (the estimator used in scikit-learn)
+        _X = _xr.values - _xr.values.mean(axis=0)
+        _T = _X.shape[0]
+        _emp = _X.T @ _X / _T
+        _mu_t = np.trace(_emp) / _xn
+        _delta = ((_emp - _mu_t * np.eye(_xn)) ** 2).sum() / _xn
+        _beta = min(((_X ** 2).T @ (_X ** 2) / _T - _emp ** 2).sum() / (_xn * _T), _delta)
+        _xshrink = float(_beta / _delta) if _delta > 0 else 0.0
+        _xSs = (1 - _xshrink) * _emp + _xshrink * _mu_t * np.eye(_xn)
+
+        _xwaste = np.array([1.0 if _XFEED[n][2] else 0.0 for n in _xnames])
+        _xtallow = np.array([1.0 if _XFEED[n][3] else 0.0 for n in _xnames])
+        _xcons = [{"type": "eq", "fun": lambda x: x.sum() - 1},
+                  {"type": "ineq", "fun": lambda x: x @ _xwaste - sustainability_min},
+                  {"type": "ineq", "fun": lambda x: concentration_cap - x @ _xtallow}]
+        _xbnds = [(0.0, concentration_cap)] * _xn
+
+        def _x_minvar(cov):
+            res = _xminimize(lambda x: x @ cov @ x, np.ones(_xn) / _xn, method="SLSQP", bounds=_xbnds,
+                             constraints=_xcons, options={"maxiter": 1000, "ftol": 1e-14})
+            return res.x if res.success else None
+
+        _xw_sample = _x_minvar(_xS)
+        _xw_shrunk = _x_minvar(_xSs)
+        if _xw_sample is None or _xw_shrunk is None:
+            st.error("No mix follows your rules with these feedstocks. Try a lower waste minimum or a higher cap.")
+        else:
+            _xmain = float(min_variance_portfolio(constrained_frontier)["volatility"])
+            xm1, xm2, xm3 = st.columns(3)
+            xm1.metric("Feedstocks used", f"{_xn}", help="Out of the 8 in the extended universe.")
+            _xday = float(np.sqrt(_xw_shrunk @ _xS @ _xw_shrunk / 5))
+            xm2.metric("Daily cost risk (extended mix)", f"{_xday:.2%}",
+                       delta=f"{(_xday - _xmain) * 100:+.2f} pts vs main mix (4 feedstocks)", delta_color="inverse",
+                       help="Weekly risk ÷ √5, so it compares with the main app's daily numbers.")
+            xm3.metric("Shrinkage intensity", f"{_xshrink:.0%}",
+                       help="How much the covariance matrix is pulled towards a simple, stable target (Ledoit-Wolf). "
+                            "0% = raw estimate, 100% = target only.")
+
+            st.dataframe(pd.DataFrame({
+                "Waste-based": ["yes" if _XFEED[n][2] else "no" for n in _xnames],
+                "Daily risk alone": [f"{np.sqrt(_xS[i, i] / 5):.2%}" for i in range(_xn)],
+                "Mix (raw covariance)": [f"{max(v, 0):.1%}" for v in _xw_sample],
+                "Mix (with shrinkage)": [f"{max(v, 0):.1%}" for v in _xw_shrunk],
+            }, index=_xnames))
+            st.caption(
+                f"{_T} weeks of returns (weekly risk ÷ √5 gives daily). With {_xn} feedstocks we estimate {_xn * (_xn - 1) // 2} correlations from the same "
+                "history, so the raw covariance matrix is noisy and the optimizer over-trusts small differences. "
+                "Shrinkage (LN 3) blends it with a stable target; the mix with shrinkage is our extended "
+                "recommendation. Waste-based: UCO and animal fats (tallow, pork fat). Corn is a rough proxy for "
+                "distillers corn oil, lean hogs for white grease, prices stay in their own currency: rapeseed in euros, "
+                "canola in Canadian dollars, palm oil in ringgit, the others in dollars. Palm oil is high-ILUC: under "
+                "the Dutch 2026 rules a real buyer could use almost none, so treat its weight as a comparison only. "
+                "Weeks with a rapeseed contract roll are removed."
+            )
+
+            # ---- commodity benchmark: tracking error and beta ----
+            if _xb_ser is None or len(_xb_ser) < 250:
+                st.info("The commodity benchmark could not be downloaded right now.")
+            else:
+                _xall = pd.concat([_xp, _xb_ser.rename("Benchmark")], axis=1, sort=True).ffill(limit=5).dropna()
+                _xra = _xall.resample("W-FRI").last().pct_change().dropna()
+                if "Rapeseed (Euronext)" in _xra.columns:
+                    _xra = _xra[~(_xra.index.month.isin([2, 5, 8, 11]) & (_xra.index.day <= 9))]
+                _rb = _xra["Benchmark"].values
+                _RX = _xra[_xnames].values
+                _cov_full = np.cov(np.column_stack([_RX, _rb]), rowvar=False)
+                _Sx, _sxb, _vb = _cov_full[:_xn, :_xn], _cov_full[:_xn, -1], _cov_full[-1, -1]
+
+                def _x_te(x):
+                    return float(np.sqrt(max(x @ _Sx @ x - 2 * x @ _sxb + _vb, 0.0) / 5))
+
+                def _x_beta(x):
+                    return float((x @ _sxb) / _vb)
+
+                _res_te = _xminimize(lambda x: x @ _Sx @ x - 2 * x @ _sxb, np.ones(_xn) / _xn, method="SLSQP",
+                                     bounds=_xbnds, constraints=_xcons, options={"maxiter": 1000, "ftol": 1e-14})
+                _xw_te = _res_te.x if _res_te.success else None
+
+                st.markdown(f"**Your feedstock costs vs the commodity market ({_xbench_name})**")
+                xb1, xb2, xb3 = st.columns(3)
+                xb1.metric("Tracking error (daily)", f"{_x_te(_xw_shrunk):.2%}",
+                           help="How much your extended mix's cost moves differently from the benchmark each day "
+                                "(weekly tracking error ÷ √5).")
+                xb2.metric("Beta to the benchmark", f"{_x_beta(_xw_shrunk):.2f}",
+                           help="1.0 = your costs move one-for-one with the commodity market.")
+                xb3.metric("Correlation", f"{_x_beta(_xw_shrunk) * np.sqrt(_vb) / np.sqrt(_xw_shrunk @ _Sx @ _xw_shrunk):.0%}")
+
+                if _xw_te is not None:
+                    st.dataframe(pd.DataFrame({
+                        "Extended mix (stable costs)": [f"{max(v, 0):.1%}" for v in _xw_shrunk]
+                            + [f"{np.sqrt(_xw_shrunk @ _Sx @ _xw_shrunk / 5):.2%}", f"{_x_te(_xw_shrunk):.2%}"],
+                        "Mix closest to the benchmark": [f"{max(v, 0):.1%}" for v in _xw_te]
+                            + [f"{np.sqrt(_xw_te @ _Sx @ _xw_te / 5):.2%}", f"{_x_te(_xw_te):.2%}"],
+                    }, index=_xnames + ["Daily cost risk", "Tracking error vs benchmark (daily)"]))
+
+                _xidx = pd.DataFrame({"Your extended mix": np.cumprod(1 + _RX @ _xw_shrunk) * 100,
+                                      _xbench_name: np.cumprod(1 + _rb) * 100}, index=_xra.index)
+                st.line_chart(_xidx)
+                _xcorr = _x_beta(_xw_shrunk) * np.sqrt(_vb) / np.sqrt(_xw_shrunk @ _Sx @ _xw_shrunk)
+                if _xcorr < 0.3:
+                    _xmsg = ("Your costs barely follow the commodity market. They have their own drivers (fats, UCO, "
+                             "European rapeseed, biofuel rules), so a commodity index is not a hedge for you.")
+                elif _xcorr < 0.7:
+                    _xmsg = (f"Your costs follow the commodity market only partly: the market explains about "
+                             f"{_xcorr ** 2:.0%} of your cost swings (correlation²). The shared part comes from corn, "
+                             f"soybeans, cattle and hogs, which are also inside the index. The rest comes from your own "
+                             f"drivers (UCO, European rapeseed, biofuel rules). A commodity index is only a partial "
+                             f"hedge; your own feedstock futures are more precise.")
+                else:
+                    _xmsg = ("Your costs move closely with the commodity market, so a commodity index would already "
+                             "hedge a large part of your risk.")
+                if _xw_te is not None:
+                    _xmsg += (f" Even the mix closest to the benchmark keeps a tracking error of {_x_te(_xw_te):.2%} a "
+                              f"day: with your rules, you cannot copy the market.")
+                st.caption(
+                    "Tracking error = √[xᵀΣx − 2xᵀσ_b + σ_b²]: the daily volatility of the gap between your cost and "
+                    "the benchmark (LN 2). " + _xmsg
+                )
+
+
 # --- rapeseed basis-risk check: ZS=F (US soybeans) vs Euronext rapeseed -------
 
 with st.expander("Basis-risk check: US soybeans (ZS=F) vs European rapeseed (Euronext)"):
