@@ -462,7 +462,7 @@ _X9_COLORS = {
 
 
 @st.cache_data(ttl=86400, show_spinner="Preparing the 9-feedstock mix...")
-def _x9_mix(years, red, cap, feeds_key=()):
+def _x9_mix(years, red, cap, feeds_key=(), goal="minvar"):
     import yfinance as yf
     from scipy.optimize import minimize as _min
     end = pd.Timestamp.today().normalize()
@@ -514,8 +514,23 @@ def _x9_mix(years, red, cap, feeds_key=()):
     if not res.success:
         return None
     w = np.clip(res.x, 0, None)
+    mu = r.mean().values  # average weekly price change of each feedstock
+    used = "minvar"
+    if goal == "sharpe":
+        # Sharpe-equivalent (rf = 0): highest average price change per unit of risk, same rules, shrunk covariance
+        def _neg_sr(x):
+            return -(x @ mu) / np.sqrt(max(x @ S_shrunk @ x, 1e-18))
+        best = None
+        for x0 in (w / w.sum(), np.ones(n) / n):
+            rs = _min(_neg_sr, x0, method="SLSQP", bounds=[(0.0, cap)] * n, constraints=cons,
+                      options={"maxiter": 1000, "ftol": 1e-12})
+            if rs.success and (best is None or rs.fun < best.fun):
+                best = rs
+        if best is not None and -best.fun > 0:
+            w = np.clip(best.x, 0, None)
+            used = "sharpe"
     return {"names": names, "w": w / w.sum(), "S": r.cov().values, "waste": waste, "tallow": tallow,
-            "missing": missing, "weeks": T, "shrink": shrink}
+            "missing": missing, "weeks": T, "shrink": shrink, "mu": mu, "goal": used}
 
 
 # --- recommended allocation ------------------------------------------------
@@ -548,13 +563,24 @@ recommended = (
 weights = recommended["weights"]
 bar_colors = [TICKER_COLORS[t] for t in PORTFOLIO_TICKERS]
 
+_x9_want = "sharpe" if pick_method.startswith("Best") else "minvar"
+if _x9 is not None and _x9_want == "sharpe":
+    _x9 = _x9_mix(int(years_lookback), float(sustainability_min), float(concentration_cap), tuple(_X9_FEEDS),
+                  "sharpe") or _x9
+
 if _x9 is not None:
     _n9, _w9, _S9 = _x9["names"], _x9["w"], _x9["S"]
     _o9 = [k for k in _n9 if _X9_FEEDS[k][2]] + [k for k in _n9 if not _X9_FEEDS[k][2]]
     _i9 = [_n9.index(k) for k in _o9]
     _nw9 = sum(1 for k in _o9 if _X9_FEEDS[k][2])
-    st.caption("Minimum-variance mix of the extended universe (weekly data, shrinkage). The frontier pick above "
-               "applies to the 4-feedstock view only.")
+    if _x9.get("goal") == "sharpe":
+        st.caption("Best return-per-risk (Sharpe-equivalent) mix of the extended universe: weekly data, shrinkage, "
+                   "same rules. Average price changes over a few years are noisy (and include 3 company share "
+                   "prices), so this mix can move a lot when the data changes: treat it as illustrative.")
+    else:
+        st.caption("Minimum-variance mix of the extended universe (weekly data, shrinkage)."
+                   + (" No mix with a positive return-per-risk was found, so the minimum-variance mix is shown."
+                      if _x9_want == "sharpe" else ""))
     if _x9["missing"]:
         st.warning("Not available right now (skipped): " + ", ".join(_x9["missing"]) + ".")
     c9a, c9b = st.columns([2, 1])
@@ -577,6 +603,10 @@ if _x9 is not None:
     with c9b:
         st.metric("Expected daily cost volatility", f"{np.sqrt(_w9 @ _S9 @ _w9 / 5):.2%}",
                   help="Weekly risk ÷ √5, so it compares with the 4-feedstock daily number.")
+        _ret9 = float(_x9["mu"] @ _w9) / 5
+        st.metric("Expected daily price change", f"{_ret9:.4%}", help="Average weekly price change ÷ 5.")
+        if _x9.get("goal") == "sharpe":
+            st.metric("Return-per-risk (Sharpe-equivalent)", f"{_ret9 / np.sqrt(_w9 @ _S9 @ _w9 / 5):.4f}")
         _ws9 = float(_w9 @ _x9["waste"])
         st.metric("Sustainability share achieved", f"{_ws9:.1%}", help=f"Target minimum: {sustainability_min:.0%}")
         st.markdown(f"{'✅ **PASS**' if _ws9 >= sustainability_min - 1e-6 else '❌ **FAIL**'} -- RED2 sustainability minimum")
