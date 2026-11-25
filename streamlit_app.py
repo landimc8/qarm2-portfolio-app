@@ -81,6 +81,9 @@ st.markdown(
     a cap so no single feedstock dominates your supply, and your procurement budget. 
     It also shows a stable-margin mix if your selling price follows diesel, 
     how much profit a bad month could take, and it can run on your own prices.
+    You can widen the choice to 15 feedstocks with real European prices, stay close 
+    to what you buy today, add your own price views, test the mix on prices it has 
+    not seen, and compare it with strategies built for the worst days.
     """
 )
 
